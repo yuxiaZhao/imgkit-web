@@ -19,6 +19,8 @@
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup",
+    "start": "npx serve demo -l 3000",
+    "preview": "npx serve demo -l 8080",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
