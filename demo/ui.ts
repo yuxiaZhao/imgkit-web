@@ -251,7 +251,7 @@ export function createApp(root: HTMLElement) {
           </div>
           <div class="control"><label>透明度</label><input type="range" min="0.05" max="1" step="0.05" value="${state.watermarkOpacity}" data-k="watermarkOpacity" /></div>
           <div class="control"><label>字体大小</label><input type="number" min="8" max="200" value="${state.watermarkFontSize}" data-k="watermarkFontSize" /></div>
-          <div class="control"><label>颜色</label><input type="color" value="${state.watermarkColor}" data-k="watermarkColor" /></div>
+          <div class="control"><label>颜色 </label><input type="color" value="${state.watermarkColor}" data-k="watermarkColor" style="padding:0 4px;" /></div>
           <div class="control"><label>旋转角度</label><input type="number" min="-180" max="180" value="${state.watermarkRotate}" data-k="watermarkRotate" /></div>
           ${state.watermarkTile ? `<div class="control"><label>平铺间距</label><input type="number" min="0" max="500" value="${state.watermarkTileGap}" data-k="watermarkTileGap" /></div>` : ''}
         </div>`;
@@ -344,9 +344,11 @@ export function createApp(root: HTMLElement) {
         val = (target as HTMLInputElement).value;
       }
       (state as any)[key] = val;
-      if (key === 'rotateDegrees' || key === 'watermarkTile') {
+      if (key === 'rotateDegrees') {
         render();
-      } else {
+      } else if (key === 'watermarkTile') {
+        renderTabContent();
+      } else if ((target as HTMLInputElement).type === 'range') {
         renderTabContent();
       }
     });
