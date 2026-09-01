@@ -143,7 +143,7 @@ export function createApp(root: HTMLElement) {
                 .join('')}
             </div>
             <div id="tabContent"></div>
-            <button class="btn" id="run" ${hasSource ? '' : 'disabled'}>执行处理</button>
+            <button class="btn" id="run" ${hasSource ? '' : 'disabled'} style="margin-top:var(--space-lg)">执行处理</button>
           </section>
         </div>
         <section class="panel" style="margin-top:24px">
@@ -152,8 +152,8 @@ export function createApp(root: HTMLElement) {
         </section>
       </div>
     `;
-    bind();
     renderTabContent();
+    bind();
   }
 
   function renderTabContent() {
@@ -206,8 +206,8 @@ export function createApp(root: HTMLElement) {
           <button class="btn-mini" data-rotate="0">还原</button>
         </div>
         <div class="flip-actions">
-          <button class="btn-mini" id="btnFlipH">水平翻转</button>
-          <button class="btn-mini" id="btnFlipV">垂直翻转</button>
+          <button class="btn-mini${state.flipAxis === 'horizontal' ? ' active' : ''}" id="btnFlipH">水平翻转</button>
+          <button class="btn-mini${state.flipAxis === 'vertical' ? ' active' : ''}" id="btnFlipV">垂直翻转</button>
         </div>`;
     } else if (t === 'filter') {
       el.innerHTML = `
