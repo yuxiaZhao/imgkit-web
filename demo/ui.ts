@@ -1,5 +1,5 @@
-import { crop, resize, rotate, flip, filter } from 'imgkit';
-import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm } from 'imgkit';
+import { crop, resize, rotate, flip, filter, watermark, metadata } from 'imgkit';
+import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm, WatermarkOptions } from 'imgkit';
 import { Position } from 'imgkit';
 
 interface SourceItem {
@@ -18,9 +18,10 @@ interface ResultItem {
 interface State {
   source: SourceItem | null;
   result: ResultItem | null;
+  sourceMeta: string;
   busy: boolean;
   loadingText: string;
-  activeTab: 'crop' | 'resize' | 'rotate' | 'filter';
+  activeTab: 'crop' | 'resize' | 'rotate' | 'filter' | 'watermark';
   previewMode: 'single' | 'compare';
   comparePos: number;
   // crop
@@ -48,6 +49,15 @@ interface State {
   filterBlur: number;
   filterInvert: number;
   filterOpacity: number;
+  // watermark
+  watermarkText: string;
+  watermarkTile: boolean;
+  watermarkPos: Position;
+  watermarkOpacity: number;
+  watermarkFontSize: number;
+  watermarkColor: string;
+  watermarkRotate: number;
+  watermarkTileGap: number;
 }
 
 function labelOf(t: string): string {
@@ -56,6 +66,7 @@ function labelOf(t: string): string {
     resize: '缩放',
     rotate: '旋转/翻转',
     filter: '滤镜',
+    watermark: '水印',
   };
   return map[t] ?? t;
 }
@@ -64,6 +75,7 @@ export function createApp(root: HTMLElement) {
   const state: State = {
     source: null,
     result: null,
+    sourceMeta: '',
     busy: false,
     loadingText: '',
     activeTab: 'crop',
@@ -76,6 +88,9 @@ export function createApp(root: HTMLElement) {
     filterGrayscale: 0, filterSepia: 0, filterBrightness: 0,
     filterContrast: 0, filterSaturate: 0, filterHueRotate: 0,
     filterBlur: 0, filterInvert: 0, filterOpacity: 0,
+    watermarkText: '', watermarkTile: false, watermarkPos: Position.BottomRight,
+    watermarkOpacity: 0.5, watermarkFontSize: 32, watermarkColor: '#ffffff',
+    watermarkRotate: 0, watermarkTileGap: 40,
   };
 
   function render() {
@@ -87,7 +102,7 @@ export function createApp(root: HTMLElement) {
 
     const sourcePreviewHtml = hasSource
       ? `<div class="preview-thumb"><img src="${srcUrl}" alt="source" /></div>
-         <div class="meta">${fileName}${state.source!.camera ? ' · ' + state.source!.camera : ''} · ${state.source!.fileSize} · ${state.source!.image.width}×${state.source!.image.height}px</div>`
+         <div class="meta">${fileName}${state.source!.camera ? ' · ' + state.source!.camera : ''} · ${state.source!.fileSize} · ${state.source!.image.width}×${state.source!.image.height}px${state.sourceMeta ? ' · ' + state.sourceMeta : ''}</div>`
       : '';
 
     let resultSectionHtml: string;
@@ -140,7 +155,7 @@ export function createApp(root: HTMLElement) {
           <section class="panel">
             <h2>2. 处理选项</h2>
             <div class="tabs">
-              ${(['crop', 'resize', 'rotate', 'filter'] as const)
+              ${(['crop', 'resize', 'rotate', 'filter', 'watermark'] as const)
                 .map((t) => `<div class="tab ${state.activeTab === t ? 'active' : ''}" data-tab="${t}">${labelOf(t)}</div>`)
                 .join('')}
             </div>
@@ -224,6 +239,22 @@ export function createApp(root: HTMLElement) {
           <div class="control"><label>反相 (0-1)</label><input type="range" min="0" max="1" step="0.05" value="${state.filterInvert}" data-k="filterInvert" /></div>
           <div class="control"><label>透明度 (0-1)</label><input type="range" min="0" max="1" step="0.05" value="${state.filterOpacity}" data-k="filterOpacity" /></div>
         </div>`;
+    } else if (t === 'watermark') {
+      el.innerHTML = `
+        <div class="controls">
+          <div class="control"><label>水印文字</label><input type="text" value="${state.watermarkText}" data-k="watermarkText" placeholder="例如: © imgkit" /></div>
+          <div class="control"><label>平铺模式</label><input type="checkbox" data-k="watermarkTile" ${state.watermarkTile ? 'checked' : ''} /></div>
+          <div class="control"><label>位置</label>
+            <select data-k="watermarkPos">
+              ${Object.values(Position).map((p) => `<option value="${p}" ${state.watermarkPos === p ? 'selected' : ''}>${p}</option>`).join('')}
+            </select>
+          </div>
+          <div class="control"><label>透明度</label><input type="range" min="0.05" max="1" step="0.05" value="${state.watermarkOpacity}" data-k="watermarkOpacity" /></div>
+          <div class="control"><label>字体大小</label><input type="number" min="8" max="200" value="${state.watermarkFontSize}" data-k="watermarkFontSize" /></div>
+          <div class="control"><label>颜色</label><input type="color" value="${state.watermarkColor}" data-k="watermarkColor" /></div>
+          <div class="control"><label>旋转角度</label><input type="number" min="-180" max="180" value="${state.watermarkRotate}" data-k="watermarkRotate" /></div>
+          ${state.watermarkTile ? `<div class="control"><label>平铺间距</label><input type="number" min="0" max="500" value="${state.watermarkTileGap}" data-k="watermarkTileGap" /></div>` : ''}
+        </div>`;
     }
   }
 
@@ -304,12 +335,16 @@ export function createApp(root: HTMLElement) {
       const target = e.target as HTMLElement;
       const key = target.dataset.k;
       if (!key) return;
-      const val = (target as HTMLInputElement).type === 'range' || (target as HTMLInputElement).type === 'number'
-        ? parseFloat((target as HTMLInputElement).value) || 0
-        : (target as HTMLInputElement).value;
+      let val: any;
+      if ((target as HTMLInputElement).type === 'checkbox') {
+        val = (target as HTMLInputElement).checked;
+      } else if ((target as HTMLInputElement).type === 'range' || (target as HTMLInputElement).type === 'number') {
+        val = parseFloat((target as HTMLInputElement).value) || 0;
+      } else {
+        val = (target as HTMLInputElement).value;
+      }
       (state as any)[key] = val;
-      // 同步更新旋转角度显示
-      if (key === 'rotateDegrees') {
+      if (key === 'rotateDegrees' || key === 'watermarkTile') {
         render();
       } else {
         renderTabContent();
@@ -319,9 +354,14 @@ export function createApp(root: HTMLElement) {
       const target = e.target as HTMLElement;
       const key = target.dataset.k;
       if (!key || (target as HTMLInputElement).type === 'range') return;
-      const val = (target as HTMLInputElement).type === 'number'
-        ? parseFloat((target as HTMLInputElement).value) || 0
-        : (target as HTMLInputElement).value;
+      let val: any;
+      if ((target as HTMLInputElement).type === 'checkbox') {
+        val = (target as HTMLInputElement).checked;
+      } else if ((target as HTMLInputElement).type === 'number') {
+        val = parseFloat((target as HTMLInputElement).value) || 0;
+      } else {
+        val = (target as HTMLInputElement).value;
+      }
       (state as any)[key] = val;
       renderTabContent();
     });
@@ -357,6 +397,9 @@ export function createApp(root: HTMLElement) {
       state.result = null;
       // 重置裁剪参数
       state.cropW = 0; state.cropH = 0;
+      // 提取元信息
+      const meta = metadata({ data: imageData.data, width: img.width, height: img.height });
+      state.sourceMeta = `平均亮度: ${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`;
     } catch (err) {
       console.error('图片加载失败', err);
     }
@@ -487,6 +530,42 @@ export function createApp(root: HTMLElement) {
     return !!(f.grayscale || f.sepia || f.brightness || f.contrast || f.saturate || f.hueRotate || f.blur || f.invert || f.opacity);
   }
 
+  function createTextRenderer() {
+    return {
+      renderText(text: string, options: { font: string; color: string; rotate?: number }): ImageDataLike {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d')!;
+        const fontSize = parseInt(options.font, 10) || 24;
+        const rotate = options.rotate ?? 0;
+        const rad = (rotate * Math.PI) / 180;
+
+        ctx.font = options.font;
+        const metrics = ctx.measureText(text);
+        const textWidth = metrics.width;
+        const textHeight = fontSize * 1.2;
+
+        // 计算旋转后的包围盒
+        const sin = Math.abs(Math.sin(rad));
+        const cos = Math.abs(Math.cos(rad));
+        const bw = textWidth * cos + textHeight * sin;
+        const bh = textWidth * sin + textHeight * cos;
+
+        canvas.width = Math.ceil(bw) + 4;
+        canvas.height = Math.ceil(bh) + 4;
+
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(rad);
+        ctx.font = options.font;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = options.color;
+        ctx.fillText(text, 0, 0);
+
+        return ctx.getImageData(0, 0, canvas.width, canvas.height);
+      },
+    };
+  }
+
   function run() {
     if (!state.source) return;
     const src = state.source;
@@ -536,6 +615,24 @@ export function createApp(root: HTMLElement) {
       steps.push('滤镜');
     }
 
+    // 水印
+    if (state.watermarkText) {
+      const wmOpts: WatermarkOptions = {
+        text: state.watermarkText,
+        position: state.watermarkPos,
+        opacity: state.watermarkOpacity,
+        font: `${state.watermarkFontSize}px sans-serif`,
+        color: state.watermarkColor,
+        rotate: state.watermarkRotate,
+        tile: state.watermarkTile,
+        tileGap: state.watermarkTileGap,
+      };
+      const textRenderer = createTextRenderer();
+      const r = watermark({ data, width: w, height: h }, wmOpts, textRenderer);
+      data = r.data; w = r.width; h = r.height;
+      steps.push('水印');
+    }
+
     if (steps.length === 0) {
       alert('请至少设置一项处理参数');
       return;
@@ -550,9 +647,10 @@ export function createApp(root: HTMLElement) {
     const url = canvas.toDataURL('image/png');
 
     if (state.result) URL.revokeObjectURL(state.result.url);
+    const meta = metadata({ data, width: w, height: h });
     state.result = {
       url,
-      meta: `处理步骤：${steps.join(' → ')} · 结果尺寸：${w}×${h}px`,
+      meta: `处理步骤：${steps.join(' → ')} · 结果尺寸：${w}×${h}px · 平均亮度：${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`,
     };
     render();
   }
