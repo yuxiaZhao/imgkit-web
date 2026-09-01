@@ -6,6 +6,8 @@ interface SourceItem {
   file: File;
   url: string;
   image: ImageDataLike;
+  fileSize: string;
+  camera: string;
 }
 
 interface ResultItem {
@@ -85,7 +87,7 @@ export function createApp(root: HTMLElement) {
 
     const sourcePreviewHtml = hasSource
       ? `<div class="preview-thumb"><img src="${srcUrl}" alt="source" /></div>
-         <div class="meta">文件名：${fileName} · ${state.source!.image.width}×${state.source!.image.height}</div>`
+         <div class="meta">${fileName}${state.source!.camera ? ' · ' + state.source!.camera : ''} · ${state.source!.fileSize} · ${state.source!.image.width}×${state.source!.image.height}px</div>`
       : '';
 
     let resultSectionHtml: string;
@@ -340,6 +342,8 @@ export function createApp(root: HTMLElement) {
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(img, 0, 0);
       const imageData = ctx.getImageData(0, 0, img.width, img.height);
+      const camera = extractExif(bytes);
+      const fileSize = formatFileSize(file.size);
       // 释放之前的 blob URL
       if (state.source) URL.revokeObjectURL(state.source.url);
       if (state.result) URL.revokeObjectURL(state.result.url);
@@ -347,6 +351,8 @@ export function createApp(root: HTMLElement) {
         file,
         url,
         image: { data: imageData.data, width: img.width, height: img.height },
+        fileSize,
+        camera,
       };
       state.result = null;
       // 重置裁剪参数
@@ -365,6 +371,75 @@ export function createApp(root: HTMLElement) {
       img.onerror = reject;
       img.src = URL.createObjectURL(blob);
     });
+  }
+  function extractExif(bytes: Uint8Array): string {
+    // JPEG EXIF: parse TIFF header for Make/Model
+    if (bytes.length < 10 || bytes[0] !== 0xFF || bytes[1] !== 0xD8) return '';
+    let pos = 2;
+    while (pos < bytes.length - 4) {
+      if (bytes[pos] === 0xFF && bytes[pos + 1] === 0xE1) {
+        const len = (bytes[pos + 2] << 8) | bytes[pos + 3];
+        const exifStart = pos + 4;
+        const exifEnd = exifStart + len - 2;
+        if (exifEnd > bytes.length) break;
+        if (exifEnd - exifStart < 14) break;
+        const exifId = String.fromCharCode(bytes[exifStart], bytes[exifStart + 1], bytes[exifStart + 2], bytes[exifStart + 3]);
+        if (exifId !== 'Exif') break;
+        const tiffStart = exifStart + 6;
+        const bigEndian = bytes[tiffStart] === 0x4D;
+        const read16 = (p: number) => bigEndian ? (bytes[p] << 8) | bytes[p + 1] : bytes[p] | (bytes[p + 1] << 8);
+        const read32 = (p: number) => bigEndian
+          ? (bytes[p] << 24) | (bytes[p + 1] << 16) | (bytes[p + 2] << 8) | bytes[p + 3]
+          : bytes[p] | (bytes[p + 1] << 8) | (bytes[p + 2] << 16) | (bytes[p + 3] << 24);
+        let ifd0 = read32(tiffStart + 4);
+        if (ifd0 + tiffStart + 2 > exifEnd) break;
+        ifd0 += tiffStart;
+        const entryCount = read16(ifd0);
+        let make = '', model = '';
+        for (let i = 0; i < entryCount && ifd0 + 2 + i * 12 + 12 <= exifEnd; i++) {
+          const p = ifd0 + 2 + i * 12;
+          const tag = read16(p);
+          const type = read16(p + 2);
+          const count = read32(p + 4);
+          const valueOffset = read32(p + 8);
+          if (tag === 0x010F) make = readStr(bytes, tiffStart, exifEnd, bigEndian, type, count, valueOffset);
+          if (tag === 0x0110) model = readStr(bytes, tiffStart, exifEnd, bigEndian, type, count, valueOffset);
+        }
+        if (make && model) return `${make} ${model}`;
+        if (model) return model;
+        if (make) return make;
+        return '';
+      }
+      pos++;
+    }
+    return '';
+  }
+
+  function readStr(bytes: Uint8Array, tiffStart: number, exifEnd: number, bigEndian: boolean, type: number, count: number, offset: number): string {
+    if (type !== 2) return '';
+    if (count <= 4) {
+      let s = '';
+      for (let i = 0; i < count - 1; i++) {
+        const c = ((offset >> (i * 8)) & 0xFF);
+        if (c === 0) break;
+        s += String.fromCharCode(c);
+      }
+      return s;
+    }
+    const strStart = tiffStart + offset;
+    const strEnd = Math.min(strStart + count - 1, exifEnd);
+    let s = '';
+    for (let i = strStart; i < strEnd; i++) {
+      if (bytes[i] === 0) break;
+      s += String.fromCharCode(bytes[i]);
+    }
+    return s;
+  }
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   }
 
   function getCropOpts(): CropOptions | null {
@@ -477,7 +552,7 @@ export function createApp(root: HTMLElement) {
     if (state.result) URL.revokeObjectURL(state.result.url);
     state.result = {
       url,
-      meta: `处理步骤：${steps.join(' → ')} · 结果尺寸：${w}×${h}`,
+      meta: `处理步骤：${steps.join(' → ')} · 结果尺寸：${w}×${h}px`,
     };
     render();
   }
