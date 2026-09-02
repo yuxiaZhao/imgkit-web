@@ -168,7 +168,7 @@ export function createApp(root: HTMLElement) {
                 .join('')}
             </div>
             <div id="tabContent"></div>
-            <button class="btn" id="run" ${hasSource ? '' : 'disabled'} style="margin-top:var(--space-lg)">执行处理</button>
+            <button class="btn" id="run" ${hasSource && state.activeTab !== 'output' ? '' : 'disabled'} style="margin-top:var(--space-lg);${state.activeTab === 'output' ? 'display:none' : ''}">执行处理</button>
           </section>
         </div>
         <section class="panel" style="margin-top:24px">
@@ -285,8 +285,7 @@ export function createApp(root: HTMLElement) {
           <div class="control"><label>质量 ${state.outputQuality.toFixed(2)}</label><input type="range" min="0.1" max="1" step="0.05" value="${state.outputQuality}" data-k="outputQuality" /></div>
           <div class="control"><label>目标体积 (KB，0=不限)</label><input type="number" min="0" value="${state.outputMaxSize}" data-k="outputMaxSize" /></div>
           <div class="output-actions">
-            <button class="btn" id="btnCompress">压缩输出</button>
-            <button class="btn" id="btnConvert">格式转换</button>
+            <button class="btn" id="btnOutputRun">执行处理</button>
           </div>
         </div>`;
     }
@@ -354,22 +353,13 @@ export function createApp(root: HTMLElement) {
       });
     });
 
-    // 翻转按钮
-    document.getElementById('btnFlipH')?.addEventListener('click', () => {
-      state.flipAxis = state.flipAxis === 'horizontal' ? '' : 'horizontal';
-      render();
-    });
-    document.getElementById('btnFlipV')?.addEventListener('click', () => {
-      state.flipAxis = state.flipAxis === 'vertical' ? '' : 'vertical';
-      render();
-    });
-
-    // 输出按钮
-    document.getElementById('btnCompress')?.addEventListener('click', async () => {
-      await doCompress();
-    });
-    document.getElementById('btnConvert')?.addEventListener('click', async () => {
-      await doConvert();
+    // 输出按钮 + 翻转按钮（事件委托，因为按钮在 tabContent 里会被重新渲染）
+    root.addEventListener('click', async (e) => {
+      const target = e.target as HTMLElement;
+      const id = target.id || target.closest('button')?.id;
+      if (id === 'btnOutputRun') await doOutput();
+      else if (id === 'btnFlipH') { state.flipAxis = state.flipAxis === 'horizontal' ? '' : 'horizontal'; render(); }
+      else if (id === 'btnFlipV') { state.flipAxis = state.flipAxis === 'vertical' ? '' : 'vertical'; render(); }
     });
 
     // 控件值变更
@@ -633,60 +623,41 @@ export function createApp(root: HTMLElement) {
     return { data: imgData.data, width: img.width, height: img.height };
   }
 
-  async function doCompress() {
+  async function doOutput() {
     const imgData = await getProcessedImageData();
     if (!imgData) return;
     state.busy = true;
-    state.loadingText = '压缩中…';
+    state.loadingText = '处理中…';
     render();
     try {
+      // 先格式转换
+      const converted = await convert(imgData, state.outputFormat, state.outputQuality);
+      // 再压缩
+      const convertedData = await loadImageData(converted);
       const opts: any = { mimeType: state.outputFormat, quality: state.outputQuality };
       if (state.outputMaxSize > 0) opts.maxSize = state.outputMaxSize * 1024;
-      const result = await compress(imgData, opts);
+      const result = await compress(convertedData, opts);
       const url = URL.createObjectURL(result.blob);
-      const ext = result.mimeType === 'image/jpeg' ? 'jpg' : result.mimeType === 'image/webp' ? 'webp' : 'png';
-      downloadBlob(result.blob, `compressed.${ext}`);
       state.result = {
         url,
-        meta: `压缩输出 · ${(result.size / 1024).toFixed(1)}KB · quality=${result.quality.toFixed(2)} · ${result.mimeType}`,
+        meta: `${state.outputFormat} · ${(result.size / 1024).toFixed(1)}KB · quality=${result.quality.toFixed(2)}`,
       };
     } catch (e) {
-      console.error('压缩失败', e);
-      alert('压缩失败');
+      console.error('处理失败', e);
+      alert('处理失败');
     }
     state.busy = false;
     render();
   }
 
-  async function doConvert() {
-    const imgData = await getProcessedImageData();
-    if (!imgData) return;
-    state.busy = true;
-    state.loadingText = '格式转换中…';
-    render();
-    try {
-      const blob = await convert(imgData, state.outputFormat, state.outputQuality);
-      const ext = state.outputFormat === 'image/jpeg' ? 'jpg' : state.outputFormat === 'image/webp' ? 'webp' : 'png';
-      downloadBlob(blob, `converted.${ext}`);
-      const url = URL.createObjectURL(blob);
-      state.result = {
-        url,
-        meta: `格式转换 · ${(blob.size / 1024).toFixed(1)}KB · ${state.outputFormat}`,
-      };
-    } catch (e) {
-      console.error('转换失败', e);
-      alert('转换失败');
-    }
-    state.busy = false;
-    render();
-  }
-
-  function downloadBlob(blob: Blob, filename: string) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(a.href);
+  async function loadImageData(blob: Blob): Promise<ImageDataLike> {
+    const img = await loadImage(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, 0, 0);
+    return ctx.getImageData(0, 0, img.width, img.height);
   }
 
   function run() {
