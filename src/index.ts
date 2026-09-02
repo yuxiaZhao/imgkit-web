@@ -10,3 +10,5 @@ export * from "./compress";
 export * from "./convert";
 export * from "./exif";
 export * from "./zip";
+export * from "./adapter";
+export { Pipeline, imgkit, imgkitBatch } from "./pipeline";
