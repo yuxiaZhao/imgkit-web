@@ -1,5 +1,5 @@
-import { crop, resize, rotate, flip, filter, watermark, metadata } from 'imgkit';
-import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm, WatermarkOptions } from 'imgkit';
+import { crop, resize, rotate, flip, filter, watermark, metadata, compress, convert, parseExif, createZip } from 'imgkit';
+import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm, WatermarkOptions, ExifInfo, ImageMimeType } from 'imgkit';
 import { Position } from 'imgkit';
 
 interface SourceItem {
@@ -21,7 +21,7 @@ interface State {
   sourceMeta: string;
   busy: boolean;
   loadingText: string;
-  activeTab: 'crop' | 'resize' | 'rotate' | 'filter' | 'watermark';
+  activeTab: 'crop' | 'resize' | 'rotate' | 'filter' | 'watermark' | 'output';
   previewMode: 'single' | 'compare';
   comparePos: number;
   // crop
@@ -58,6 +58,11 @@ interface State {
   watermarkColor: string;
   watermarkRotate: number;
   watermarkTileGap: number;
+  // output
+  outputFormat: ImageMimeType;
+  outputQuality: number;
+  outputMaxSize: number;
+  exifData: ExifInfo | null;
 }
 
 function labelOf(t: string): string {
@@ -67,6 +72,7 @@ function labelOf(t: string): string {
     rotate: '旋转/翻转',
     filter: '滤镜',
     watermark: '水印',
+    output: '输出',
   };
   return map[t] ?? t;
 }
@@ -91,6 +97,8 @@ export function createApp(root: HTMLElement) {
     watermarkText: '', watermarkTile: false, watermarkPos: Position.BottomRight,
     watermarkOpacity: 0.5, watermarkFontSize: 32, watermarkColor: '#ffffff',
     watermarkRotate: 0, watermarkTileGap: 40,
+    outputFormat: 'image/jpeg', outputQuality: 0.8, outputMaxSize: 0,
+    exifData: null,
   };
 
   function render() {
@@ -141,7 +149,7 @@ export function createApp(root: HTMLElement) {
       <div class="container">
         <header>
           <h1>imgkit</h1>
-          <p>纯前端图片处理工具库 · 裁剪 / 缩放 / 旋转翻转 / 滤镜</p>
+          <p>纯前端图片处理工具库 · 裁剪 / 缩放 / 旋转翻转 / 滤镜 / 水印 / 输出</p>
         </header>
         <div class="layout">
           <section class="panel">
@@ -155,7 +163,7 @@ export function createApp(root: HTMLElement) {
           <section class="panel">
             <h2>2. 处理选项</h2>
             <div class="tabs">
-              ${(['crop', 'resize', 'rotate', 'filter', 'watermark'] as const)
+              ${(['crop', 'resize', 'rotate', 'filter', 'watermark', 'output'] as const)
                 .map((t) => `<div class="tab ${state.activeTab === t ? 'active' : ''}" data-tab="${t}">${labelOf(t)}</div>`)
                 .join('')}
             </div>
@@ -255,6 +263,33 @@ export function createApp(root: HTMLElement) {
           <div class="control"><label>旋转角度</label><input type="number" min="-180" max="180" value="${state.watermarkRotate}" data-k="watermarkRotate" /></div>
           ${state.watermarkTile ? `<div class="control"><label>平铺间距</label><input type="number" min="0" max="500" value="${state.watermarkTileGap}" data-k="watermarkTileGap" /></div>` : ''}
         </div>`;
+    } else if (t === 'output') {
+      const exif = state.exifData;
+      el.innerHTML = `
+        <div class="controls">
+          ${exif ? `<div class="exif-card">
+            <h4>EXIF 信息</h4>
+            ${exif.make ? `<div class="exif-row"><span>设备厂商</span><span>${exif.make}</span></div>` : ''}
+            ${exif.model ? `<div class="exif-row"><span>设备型号</span><span>${exif.model}</span></div>` : ''}
+            ${exif.dateTime ? `<div class="exif-row"><span>拍摄时间</span><span>${exif.dateTime}</span></div>` : ''}
+            ${exif.orientation ? `<div class="exif-row"><span>方向</span><span>${exif.orientation}</span></div>` : ''}
+            ${exif.gps ? `<div class="exif-row"><span>GPS</span><span>${exif.gps.latitude.toFixed(4)}, ${exif.gps.longitude.toFixed(4)}</span></div>` : ''}
+          </div>` : '<p style="color:#95a5a6;font-size:13px;">上传 JPEG 图片后可解析 EXIF 信息</p>'}
+          <div class="control"><label>输出格式</label>
+            <select data-k="outputFormat">
+              <option value="image/jpeg" ${state.outputFormat === 'image/jpeg' ? 'selected' : ''}>JPEG</option>
+              <option value="image/png" ${state.outputFormat === 'image/png' ? 'selected' : ''}>PNG</option>
+              <option value="image/webp" ${state.outputFormat === 'image/webp' ? 'selected' : ''}>WebP</option>
+            </select>
+          </div>
+          <div class="control"><label>质量 ${state.outputQuality.toFixed(2)}</label><input type="range" min="0.1" max="1" step="0.05" value="${state.outputQuality}" data-k="outputQuality" /></div>
+          <div class="control"><label>目标体积 (KB，0=不限)</label><input type="number" min="0" value="${state.outputMaxSize}" data-k="outputMaxSize" /></div>
+          <div class="output-actions">
+            <button class="btn" id="btnCompress">压缩输出</button>
+            <button class="btn" id="btnConvert">格式转换</button>
+            <button class="btn" id="btnZip">打包 ZIP</button>
+          </div>
+        </div>`;
     }
   }
 
@@ -330,6 +365,17 @@ export function createApp(root: HTMLElement) {
       render();
     });
 
+    // 输出按钮
+    document.getElementById('btnCompress')?.addEventListener('click', async () => {
+      await doCompress();
+    });
+    document.getElementById('btnConvert')?.addEventListener('click', async () => {
+      await doConvert();
+    });
+    document.getElementById('btnZip')?.addEventListener('click', async () => {
+      await doZip();
+    });
+
     // 控件值变更
     root.addEventListener('input', (e) => {
       const target = e.target as HTMLElement;
@@ -402,6 +448,12 @@ export function createApp(root: HTMLElement) {
       // 提取元信息
       const meta = metadata({ data: imageData.data, width: img.width, height: img.height });
       state.sourceMeta = `平均亮度: ${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`;
+      // 解析 EXIF
+      try {
+        state.exifData = parseExif(bytes.buffer);
+      } catch {
+        state.exifData = null;
+      }
     } catch (err) {
       console.error('图片加载失败', err);
     }
@@ -566,6 +618,100 @@ export function createApp(root: HTMLElement) {
         return ctx.getImageData(0, 0, canvas.width, canvas.height);
       },
     };
+  }
+
+  async function getProcessedImageData(): Promise<{ data: Uint8ClampedArray; width: number; height: number } | null> {
+    if (!state.result) {
+      // 没有处理结果，用原图
+      if (!state.source) return null;
+      return { data: state.source.image.data, width: state.source.image.width, height: state.source.image.height };
+    }
+    // 从 result URL 重新加载
+    const img = await loadImage(new Blob([await (await fetch(state.result.url)).arrayBuffer()]));
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, 0, 0);
+    const imgData = ctx.getImageData(0, 0, img.width, img.height);
+    return { data: imgData.data, width: img.width, height: img.height };
+  }
+
+  async function doCompress() {
+    const imgData = await getProcessedImageData();
+    if (!imgData) return;
+    state.busy = true;
+    state.loadingText = '压缩中…';
+    render();
+    try {
+      const opts: any = { mimeType: state.outputFormat, quality: state.outputQuality };
+      if (state.outputMaxSize > 0) opts.maxSize = state.outputMaxSize * 1024;
+      const result = await compress(imgData, opts);
+      const url = URL.createObjectURL(result.blob);
+      const ext = result.mimeType === 'image/jpeg' ? 'jpg' : result.mimeType === 'image/webp' ? 'webp' : 'png';
+      downloadBlob(result.blob, `compressed.${ext}`);
+      state.result = {
+        url,
+        meta: `压缩输出 · ${(result.size / 1024).toFixed(1)}KB · quality=${result.quality.toFixed(2)} · ${result.mimeType}`,
+      };
+    } catch (e) {
+      console.error('压缩失败', e);
+      alert('压缩失败');
+    }
+    state.busy = false;
+    render();
+  }
+
+  async function doConvert() {
+    const imgData = await getProcessedImageData();
+    if (!imgData) return;
+    state.busy = true;
+    state.loadingText = '格式转换中…';
+    render();
+    try {
+      const blob = await convert(imgData, state.outputFormat, state.outputQuality);
+      const ext = state.outputFormat === 'image/jpeg' ? 'jpg' : state.outputFormat === 'image/webp' ? 'webp' : 'png';
+      downloadBlob(blob, `converted.${ext}`);
+      const url = URL.createObjectURL(blob);
+      state.result = {
+        url,
+        meta: `格式转换 · ${(blob.size / 1024).toFixed(1)}KB · ${state.outputFormat}`,
+      };
+    } catch (e) {
+      console.error('转换失败', e);
+      alert('转换失败');
+    }
+    state.busy = false;
+    render();
+  }
+
+  async function doZip() {
+    const imgData = await getProcessedImageData();
+    if (!imgData) return;
+    state.busy = true;
+    state.loadingText = '打包 ZIP 中…';
+    render();
+    try {
+      const ext = state.outputFormat === 'image/jpeg' ? 'jpg' : state.outputFormat === 'image/webp' ? 'webp' : 'png';
+      const blob = await convert(imgData, state.outputFormat, state.outputQuality);
+      const data = new Uint8Array(await blob.arrayBuffer());
+      const zip = createZip([{ name: `imgkit-output.${ext}`, data }]);
+      downloadBlob(zip, 'imgkit-output.zip');
+      // 不更新 result，ZIP 只有下载
+    } catch (e) {
+      console.error('打包失败', e);
+      alert('打包失败');
+    }
+    state.busy = false;
+    render();
+  }
+
+  function downloadBlob(blob: Blob, filename: string) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   function run() {

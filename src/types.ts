@@ -30,6 +30,18 @@ export interface CompressOptions {
   mimeType?: ImageMimeType;
 }
 
+export interface CompressResult {
+  blob: Blob;
+  quality: number;
+  size: number;
+  mimeType: string;
+}
+
+export interface ZipEntry {
+  name: string;
+  data: Uint8Array;
+}
+
 export interface WatermarkOptions {
   text?: string;
   image?: ImageDataLike;

@@ -6,3 +6,7 @@ export * from "./rotate";
 export * from "./filter";
 export * from "./watermark";
 export * from "./metadata";
+export * from "./compress";
+export * from "./convert";
+export * from "./exif";
+export * from "./zip";
