@@ -62,6 +62,7 @@ interface State {
   outputFormat: ImageMimeType;
   outputQuality: number;
   outputMaxSize: number;
+  compressionMode: 'quality' | 'size';
   exifData: ExifInfo | null;
 }
 
@@ -98,6 +99,7 @@ export function createApp(root: HTMLElement) {
     watermarkOpacity: 0.5, watermarkFontSize: 32, watermarkColor: '#ffffff',
     watermarkRotate: 0, watermarkTileGap: 40,
     outputFormat: 'image/jpeg', outputQuality: 0.8, outputMaxSize: 0,
+    compressionMode: 'quality',
     exifData: null,
   };
 
@@ -282,8 +284,16 @@ export function createApp(root: HTMLElement) {
               <option value="image/webp" ${state.outputFormat === 'image/webp' ? 'selected' : ''}>WebP</option>
             </select>
           </div>
-          <div class="control"><label>质量 ${state.outputQuality.toFixed(2)}</label><input type="range" min="0.1" max="1" step="0.05" value="${state.outputQuality}" data-k="outputQuality" /></div>
-          <div class="control"><label>目标体积 (KB，0=不限)</label><input type="number" min="0" value="${state.outputMaxSize}" data-k="outputMaxSize" /></div>
+          <div class="control"><label>压缩模式</label>
+            <div class="radio-group">
+              <label class="radio-label ${state.compressionMode === 'quality' ? 'active' : ''}"><input type="radio" name="compMode" value="quality" data-k="compressionMode" ${state.compressionMode === 'quality' ? 'checked' : ''} />质量优先</label>
+              <label class="radio-label ${state.compressionMode === 'size' ? 'active' : ''}"><input type="radio" name="compMode" value="size" data-k="compressionMode" ${state.compressionMode === 'size' ? 'checked' : ''} />体积优先</label>
+            </div>
+          </div>
+          ${state.compressionMode === 'quality'
+            ? `<div class="control"><label>质量 ${state.outputQuality.toFixed(2)}</label><input type="range" min="0.1" max="1" step="0.05" value="${state.outputQuality}" data-k="outputQuality" /></div>`
+            : `<div class="control"><label>目标体积 (KB)</label><input type="number" min="1" value="${state.outputMaxSize || 50}" data-k="outputMaxSize" /></div>`
+          }
           <div class="output-actions">
             <button class="btn" id="btnOutputRun">执行处理</button>
           </div>
@@ -634,14 +644,19 @@ export function createApp(root: HTMLElement) {
       const converted = await convert(imgData, state.outputFormat, state.outputQuality);
       // 再压缩
       const convertedData = await loadImageData(converted);
-      const opts: any = { mimeType: state.outputFormat, quality: state.outputQuality };
-      if (state.outputMaxSize > 0) opts.maxSize = state.outputMaxSize * 1024;
+      const opts: any = { mimeType: state.outputFormat };
+      if (state.compressionMode === 'quality') {
+        opts.quality = state.outputQuality;
+      } else {
+        opts.maxSize = (state.outputMaxSize || 50) * 1024;
+      }
       const result = await compress(convertedData, opts);
       const url = URL.createObjectURL(result.blob);
-      state.result = {
-        url,
-        meta: `${state.outputFormat} · ${(result.size / 1024).toFixed(1)}KB · quality=${result.quality.toFixed(2)}`,
-      };
+      const metaParts = [`${state.outputFormat}`, `${(result.size / 1024).toFixed(1)}KB`];
+      if (state.compressionMode === 'quality') {
+        metaParts.push(`quality=${result.quality.toFixed(2)}`);
+      }
+      state.result = { url, meta: metaParts.join(' · ') };
     } catch (e) {
       console.error('处理失败', e);
       alert('处理失败');
