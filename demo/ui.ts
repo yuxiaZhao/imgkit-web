@@ -1,4 +1,4 @@
-import { crop, resize, rotate, flip, filter, watermark, metadata, compress, convert, parseExif, createZip } from 'imgkit';
+import { crop, resize, rotate, flip, filter, watermark, metadata, compress, convert, parseExif } from 'imgkit';
 import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm, WatermarkOptions, ExifInfo, ImageMimeType } from 'imgkit';
 import { Position } from 'imgkit';
 
@@ -287,7 +287,6 @@ export function createApp(root: HTMLElement) {
           <div class="output-actions">
             <button class="btn" id="btnCompress">压缩输出</button>
             <button class="btn" id="btnConvert">格式转换</button>
-            <button class="btn" id="btnZip">打包 ZIP</button>
           </div>
         </div>`;
     }
@@ -371,9 +370,6 @@ export function createApp(root: HTMLElement) {
     });
     document.getElementById('btnConvert')?.addEventListener('click', async () => {
       await doConvert();
-    });
-    document.getElementById('btnZip')?.addEventListener('click', async () => {
-      await doZip();
     });
 
     // 控件值变更
@@ -680,27 +676,6 @@ export function createApp(root: HTMLElement) {
     } catch (e) {
       console.error('转换失败', e);
       alert('转换失败');
-    }
-    state.busy = false;
-    render();
-  }
-
-  async function doZip() {
-    const imgData = await getProcessedImageData();
-    if (!imgData) return;
-    state.busy = true;
-    state.loadingText = '打包 ZIP 中…';
-    render();
-    try {
-      const ext = state.outputFormat === 'image/jpeg' ? 'jpg' : state.outputFormat === 'image/webp' ? 'webp' : 'png';
-      const blob = await convert(imgData, state.outputFormat, state.outputQuality);
-      const data = new Uint8Array(await blob.arrayBuffer());
-      const zip = createZip([{ name: `imgkit-output.${ext}`, data }]);
-      downloadBlob(zip, 'imgkit-output.zip');
-      // 不更新 result，ZIP 只有下载
-    } catch (e) {
-      console.error('打包失败', e);
-      alert('打包失败');
     }
     state.busy = false;
     render();
