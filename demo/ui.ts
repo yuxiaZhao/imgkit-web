@@ -424,7 +424,8 @@ export function createApp(root: HTMLElement) {
 
   async function handleFiles(files: FileList): Promise<void> {
     state.busy = true;
-    const count = files.length;
+    const fileArray = Array.from(files);
+    const count = fileArray.length;
     state.loadingText = `正在加载 ${count} 张图片…`;
     render();
     // 释放旧的 blob URL
@@ -437,7 +438,7 @@ export function createApp(root: HTMLElement) {
 
     for (let i = 0; i < count; i++) {
       try {
-        const file = files[i];
+        const file = fileArray[i];
         const bytes = new Uint8Array(await file.arrayBuffer());
         const blob = new Blob([bytes], { type: file.type });
         const url = URL.createObjectURL(blob);
@@ -463,7 +464,7 @@ export function createApp(root: HTMLElement) {
           try { state.exifData = parseExif(bytes.buffer); } catch { state.exifData = null; }
         }
       } catch (err) {
-        console.warn(`图片加载失败 (${files[i]})`, err);
+        console.warn(`图片加载失败 (${fileArray[i]?.name})`, err);
       }
     }
     // 重置裁剪参数
