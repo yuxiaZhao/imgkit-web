@@ -16,7 +16,7 @@ interface ResultItem {
 }
 
 interface State {
-  sources: SourceItem[];
+  sources: (SourceItem | null)[];
   results: ResultItem[];
   currentIndex: number;
   sourceMeta: string;
@@ -113,7 +113,7 @@ export function createApp(root: HTMLElement) {
   }
 
   function render() {
-    const hasSource = state.sources.length > 0;
+    const hasSource = state.sources.some((s) => s !== null);
     const src = getSource();
     const srcUrl = src?.url ?? '';
     const res = getResult();
@@ -424,59 +424,77 @@ export function createApp(root: HTMLElement) {
 
   async function handleFiles(files: FileList): Promise<void> {
     state.busy = true;
-    const fileArray = Array.from(files);
+    let fileArray = Array.from(files);
+    // 文件数量校验：10张上限
+    const MAX_FILES = 10;
+    if (fileArray.length > MAX_FILES) {
+      alert(`最多支持 ${MAX_FILES} 张图片，已自动截取前 ${MAX_FILES} 张`);
+      fileArray = fileArray.slice(0, MAX_FILES);
+    }
     const count = fileArray.length;
     state.loadingText = `正在加载 ${count} 张图片…`;
     render();
     // 释放旧的 blob URL
-    for (const s of state.sources) URL.revokeObjectURL(s.url);
+    for (const s of state.sources) { if (s) URL.revokeObjectURL(s.url); }
     for (const r of state.results) { if (r) URL.revokeObjectURL(r.url); }
-    state.sources = [];
-    state.results = [];
+    // 预分配数组，失败时保持索引对齐
+    state.sources = new Array(count).fill(null);
+    state.results = new Array(count).fill(null as any);
     state.currentIndex = 0;
     state.exifData = null;
 
-    for (let i = 0; i < count; i++) {
-      try {
-        const file = fileArray[i];
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const blob = new Blob([bytes], { type: file.type });
-        const url = URL.createObjectURL(blob);
-        const img = await loadImage(blob);
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(img, 0, 0);
-        const imageData = ctx.getImageData(0, 0, img.width, img.height);
-        const camera = extractExif(bytes);
-        const fileSize = formatFileSize(file.size);
-        state.sources.push({
-          file,
-          url,
-          image: { data: imageData.data, width: img.width, height: img.height },
-          fileSize,
-          camera,
-        });
-        state.results.push(null as any);
-        // 取第一张的 EXIF
-        if (i === 0) {
-          try { state.exifData = parseExif(bytes.buffer); } catch { state.exifData = null; }
-        }
-      } catch (err) {
-        console.warn(`图片加载失败 (${fileArray[i]?.name})`, err);
+    // 批量并行加载
+    const results = await Promise.allSettled(
+      fileArray.map((file) => loadOneFile(file))
+    );
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (r.status === 'fulfilled') {
+        state.sources[i] = r.value;
+      } else {
+        console.warn(`图片加载失败 (${fileArray[i]?.name})`, r.reason);
       }
+    }
+    // 取第一张成功加载的图片提取 EXIF
+    const firstSource = state.sources.find((s) => s !== null);
+    if (firstSource) {
+      try {
+        const bytes = new Uint8Array(await firstSource.file.arrayBuffer());
+        state.exifData = parseExif(bytes.buffer);
+      } catch { state.exifData = null; }
     }
     // 重置裁剪参数
     state.cropW = 0; state.cropH = 0;
     // 提取第一张的元信息
-    if (state.sources.length > 0) {
-      const { image } = state.sources[0];
+    if (firstSource) {
+      const { image } = firstSource;
       const meta = metadata({ data: image.data, width: image.width, height: image.height });
       state.sourceMeta = `平均亮度: ${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`;
     }
     state.busy = false;
     render();
+  }
+
+  async function loadOneFile(file: File): Promise<SourceItem> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const blob = new Blob([bytes], { type: file.type });
+    const url = URL.createObjectURL(blob);
+    const img = await loadImage(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, 0, 0);
+    const imageData = ctx.getImageData(0, 0, img.width, img.height);
+    const camera = extractExif(bytes);
+    const fileSize = formatFileSize(file.size);
+    return {
+      file,
+      url,
+      image: { data: imageData.data, width: img.width, height: img.height },
+      fileSize,
+      camera,
+    };
   }
 
   function loadImage(blob: Blob): Promise<HTMLImageElement> {
@@ -705,6 +723,7 @@ export function createApp(root: HTMLElement) {
     // 批量处理所有图片
     for (let idx = 0; idx < state.sources.length; idx++) {
       const src = state.sources[idx];
+      if (!src) continue;
       let data = src.image.data;
       let w = src.image.width;
       let h = src.image.height;
