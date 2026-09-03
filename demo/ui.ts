@@ -16,8 +16,9 @@ interface ResultItem {
 }
 
 interface State {
-  source: SourceItem | null;
-  result: ResultItem | null;
+  sources: SourceItem[];
+  results: ResultItem[];
+  currentIndex: number;
   sourceMeta: string;
   busy: boolean;
   loadingText: string;
@@ -80,8 +81,9 @@ function labelOf(t: string): string {
 
 export function createApp(root: HTMLElement) {
   const state: State = {
-    source: null,
-    result: null,
+    sources: [],
+    results: [],
+    currentIndex: 0,
     sourceMeta: '',
     busy: false,
     loadingText: '',
@@ -103,16 +105,25 @@ export function createApp(root: HTMLElement) {
     exifData: null,
   };
 
+  function getSource(): SourceItem | null {
+    return state.sources[state.currentIndex] ?? null;
+  }
+  function getResult(): ResultItem | null {
+    return state.results[state.currentIndex] ?? null;
+  }
+
   function render() {
-    const hasSource = state.source !== null;
-    const srcUrl = state.source?.url ?? '';
-    const resUrl = state.result?.url ?? '';
-    const resMeta = state.result?.meta ?? '';
-    const fileName = state.source?.file?.name ?? '';
+    const hasSource = state.sources.length > 0;
+    const src = getSource();
+    const srcUrl = src?.url ?? '';
+    const res = getResult();
+    const resUrl = res?.url ?? '';
+    const resMeta = res?.meta ?? '';
+    const fileName = src?.file?.name ?? '';
 
     const sourcePreviewHtml = hasSource
       ? `<div class="preview-thumb"><img src="${srcUrl}" alt="source" /></div>
-         <div class="meta">${fileName}${state.source!.camera ? ' · ' + state.source!.camera : ''} · ${state.source!.fileSize} · ${state.source!.image.width}×${state.source!.image.height}px${state.sourceMeta ? ' · ' + state.sourceMeta : ''}</div>`
+         <div class="meta">${fileName}${src!.camera ? ' · ' + src!.camera : ''} · ${src!.fileSize} · ${src!.image.width}×${src!.image.height}px${state.sourceMeta ? ' · ' + state.sourceMeta : ''}</div>`
       : '';
 
     let resultSectionHtml: string;
@@ -158,7 +169,7 @@ export function createApp(root: HTMLElement) {
             <h2>1. 选择图片</h2>
             <div class="drop-zone" id="drop">
               <p>点击或拖拽图片到此处</p>
-              <input type="file" id="file" accept="image/*" hidden />
+              <input type="file" id="file" accept="image/*" multiple hidden />
             </div>
             ${sourcePreviewHtml}
           </section>
@@ -310,10 +321,10 @@ export function createApp(root: HTMLElement) {
     drop.addEventListener('drop', (e) => {
       e.preventDefault();
       drop.classList.remove('dragover');
-      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
     });
     fileInput.addEventListener('change', () => {
-      if (fileInput.files && fileInput.files.length > 0) handleFile(fileInput.files[0]);
+      if (fileInput.files && fileInput.files.length > 0) handleFiles(fileInput.files);
       fileInput.value = '';
     });
 
@@ -411,47 +422,57 @@ export function createApp(root: HTMLElement) {
     });
   }
 
-  async function handleFile(file: File): Promise<void> {
+  async function handleFiles(files: FileList): Promise<void> {
     state.busy = true;
-    state.loadingText = '正在加载图片…';
+    const count = files.length;
+    state.loadingText = `正在加载 ${count} 张图片…`;
     render();
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const blob = new Blob([bytes], { type: file.type });
-      const url = URL.createObjectURL(blob);
-      const img = await loadImage(blob);
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0);
-      const imageData = ctx.getImageData(0, 0, img.width, img.height);
-      const camera = extractExif(bytes);
-      const fileSize = formatFileSize(file.size);
-      // 释放之前的 blob URL
-      if (state.source) URL.revokeObjectURL(state.source.url);
-      if (state.result) URL.revokeObjectURL(state.result.url);
-      state.source = {
-        file,
-        url,
-        image: { data: imageData.data, width: img.width, height: img.height },
-        fileSize,
-        camera,
-      };
-      state.result = null;
-      // 重置裁剪参数
-      state.cropW = 0; state.cropH = 0;
-      // 提取元信息
-      const meta = metadata({ data: imageData.data, width: img.width, height: img.height });
-      state.sourceMeta = `平均亮度: ${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`;
-      // 解析 EXIF
+    // 释放旧的 blob URL
+    for (const s of state.sources) URL.revokeObjectURL(s.url);
+    for (const r of state.results) { if (r) URL.revokeObjectURL(r.url); }
+    state.sources = [];
+    state.results = [];
+    state.currentIndex = 0;
+    state.exifData = null;
+
+    for (let i = 0; i < count; i++) {
       try {
-        state.exifData = parseExif(bytes.buffer);
-      } catch {
-        state.exifData = null;
+        const file = files[i];
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const blob = new Blob([bytes], { type: file.type });
+        const url = URL.createObjectURL(blob);
+        const img = await loadImage(blob);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, img.width, img.height);
+        const camera = extractExif(bytes);
+        const fileSize = formatFileSize(file.size);
+        state.sources.push({
+          file,
+          url,
+          image: { data: imageData.data, width: img.width, height: img.height },
+          fileSize,
+          camera,
+        });
+        state.results.push(null as any);
+        // 取第一张的 EXIF
+        if (i === 0) {
+          try { state.exifData = parseExif(bytes.buffer); } catch { state.exifData = null; }
+        }
+      } catch (err) {
+        console.warn(`图片加载失败 (${files[i]})`, err);
       }
-    } catch (err) {
-      console.error('图片加载失败', err);
+    }
+    // 重置裁剪参数
+    state.cropW = 0; state.cropH = 0;
+    // 提取第一张的元信息
+    if (state.sources.length > 0) {
+      const { image } = state.sources[0];
+      const meta = metadata({ data: image.data, width: image.width, height: image.height });
+      state.sourceMeta = `平均亮度: ${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`;
     }
     state.busy = false;
     render();
@@ -536,7 +557,7 @@ export function createApp(root: HTMLElement) {
   }
 
   function getCropOpts(): CropOptions | null {
-    const src = state.source;
+    const src = getSource();
     if (!src) return null;
     const { cropX, cropY, cropW, cropH, cropRatio } = state;
     if (cropRatio) {
@@ -617,13 +638,15 @@ export function createApp(root: HTMLElement) {
   }
 
   async function getProcessedImageData(): Promise<{ data: Uint8ClampedArray; width: number; height: number } | null> {
-    if (!state.result) {
+    const res = getResult();
+    if (!res) {
       // 没有处理结果，用原图
-      if (!state.source) return null;
-      return { data: state.source.image.data, width: state.source.image.width, height: state.source.image.height };
+      const src = getSource();
+      if (!src) return null;
+      return { data: src.image.data, width: src.image.width, height: src.image.height };
     }
     // 从 result URL 重新加载
-    const img = await loadImage(new Blob([await (await fetch(state.result.url)).arrayBuffer()]));
+    const img = await loadImage(new Blob([await (await fetch(res.url)).arrayBuffer()]));
     const canvas = document.createElement('canvas');
     canvas.width = img.width;
     canvas.height = img.height;
@@ -656,7 +679,8 @@ export function createApp(root: HTMLElement) {
       if (state.compressionMode === 'quality') {
         metaParts.push(`quality=${result.quality.toFixed(2)}`);
       }
-      state.result = { url, meta: metaParts.join(' · ') };
+      if (state.results[state.currentIndex]) URL.revokeObjectURL(state.results[state.currentIndex].url);
+      state.results[state.currentIndex] = { url, meta: metaParts.join(' · ') };
     } catch (e) {
       console.error('处理失败', e);
       alert('处理失败');
@@ -676,91 +700,94 @@ export function createApp(root: HTMLElement) {
   }
 
   function run() {
-    if (!state.source) return;
-    const src = state.source;
-    let data = src.image.data;
-    let w = src.image.width;
-    let h = src.image.height;
-    const steps: string[] = [];
+    if (state.sources.length === 0) return;
+    // 批量处理所有图片
+    for (let idx = 0; idx < state.sources.length; idx++) {
+      const src = state.sources[idx];
+      let data = src.image.data;
+      let w = src.image.width;
+      let h = src.image.height;
+      const steps: string[] = [];
 
-    // 裁剪
-    const cropOpts = getCropOpts();
-    if (cropOpts) {
-      try {
-        const r = crop({ data, width: w, height: h }, cropOpts);
-        data = r.data; w = r.width; h = r.height;
-        steps.push('裁剪');
-      } catch (e) {
-        steps.push('裁剪(跳过)');
+      // 裁剪
+      const cropOpts = getCropOpts();
+      if (cropOpts) {
+        try {
+          const r = crop({ data, width: w, height: h }, cropOpts);
+          data = r.data; w = r.width; h = r.height;
+          steps.push('裁剪');
+        } catch (e) {
+          steps.push('裁剪(跳过)');
+        }
       }
-    }
 
-    // 缩放
-    const rOpts = getResizeOpts();
-    if (rOpts) {
-      const r = resize({ data, width: w, height: h }, rOpts);
-      data = r.data; w = r.width; h = r.height;
-      steps.push('缩放');
-    }
+      // 缩放
+      const rOpts = getResizeOpts();
+      if (rOpts) {
+        const r = resize({ data, width: w, height: h }, rOpts);
+        data = r.data; w = r.width; h = r.height;
+        steps.push('缩放');
+      }
 
-    // 旋转
-    if (state.rotateDegrees !== 0) {
-      const r = rotate({ data, width: w, height: h }, state.rotateDegrees);
-      data = r.data; w = r.width; h = r.height;
-      steps.push('旋转');
-    }
+      // 旋转
+      if (state.rotateDegrees !== 0) {
+        const r = rotate({ data, width: w, height: h }, state.rotateDegrees);
+        data = r.data; w = r.width; h = r.height;
+        steps.push('旋转');
+      }
 
-    // 翻转
-    if (state.flipAxis) {
-      const r = flip({ data, width: w, height: h }, state.flipAxis as FlipAxis);
-      data = r.data; w = r.width; h = r.height;
-      steps.push('翻转');
-    }
+      // 翻转
+      if (state.flipAxis) {
+        const r = flip({ data, width: w, height: h }, state.flipAxis as FlipAxis);
+        data = r.data; w = r.width; h = r.height;
+        steps.push('翻转');
+      }
 
-    // 滤镜
-    if (hasFilterOpts()) {
-      const r = filter({ data, width: w, height: h }, getFilterOpts());
-      data = r.data; w = r.width; h = r.height;
-      steps.push('滤镜');
-    }
+      // 滤镜
+      if (hasFilterOpts()) {
+        const r = filter({ data, width: w, height: h }, getFilterOpts());
+        data = r.data; w = r.width; h = r.height;
+        steps.push('滤镜');
+      }
 
-    // 水印
-    if (state.watermarkText) {
-      const wmOpts: WatermarkOptions = {
-        text: state.watermarkText,
-        position: state.watermarkPos,
-        opacity: state.watermarkOpacity,
-        font: `${state.watermarkFontSize}px sans-serif`,
-        color: state.watermarkColor,
-        rotate: state.watermarkRotate,
-        tile: state.watermarkTile,
-        tileGap: state.watermarkTileGap,
+      // 水印
+      if (state.watermarkText) {
+        const wmOpts: WatermarkOptions = {
+          text: state.watermarkText,
+          position: state.watermarkPos,
+          opacity: state.watermarkOpacity,
+          font: `${state.watermarkFontSize}px sans-serif`,
+          color: state.watermarkColor,
+          rotate: state.watermarkRotate,
+          tile: state.watermarkTile,
+          tileGap: state.watermarkTileGap,
+        };
+        const textRenderer = createTextRenderer();
+        const r = watermark({ data, width: w, height: h }, wmOpts, textRenderer);
+        data = r.data; w = r.width; h = r.height;
+        steps.push('水印');
+      }
+
+      if (steps.length === 0) {
+        alert('请至少设置一项处理参数');
+        return;
+      }
+
+      // 生成结果预览
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.putImageData(new ImageData(data, w, h), 0, 0);
+      const url = canvas.toDataURL('image/png');
+
+      if (state.results[idx]) URL.revokeObjectURL(state.results[idx].url);
+      const meta = metadata({ data, width: w, height: h });
+      state.results[idx] = {
+        url,
+        meta: `处理步骤：${steps.join(' → ')} · 结果尺寸：${w}×${h}px · 平均亮度：${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`,
       };
-      const textRenderer = createTextRenderer();
-      const r = watermark({ data, width: w, height: h }, wmOpts, textRenderer);
-      data = r.data; w = r.width; h = r.height;
-      steps.push('水印');
     }
-
-    if (steps.length === 0) {
-      alert('请至少设置一项处理参数');
-      return;
-    }
-
-    // 生成结果预览
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    ctx.putImageData(new ImageData(data, w, h), 0, 0);
-    const url = canvas.toDataURL('image/png');
-
-    if (state.result) URL.revokeObjectURL(state.result.url);
-    const meta = metadata({ data, width: w, height: h });
-    state.result = {
-      url,
-      meta: `处理步骤：${steps.join(' → ')} · 结果尺寸：${w}×${h}px · 平均亮度：${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`,
-    };
     render();
   }
 
