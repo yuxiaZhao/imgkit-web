@@ -23,6 +23,7 @@ interface State {
   busy: boolean;
   loadingText: string;
   activeTab: 'crop' | 'resize' | 'rotate' | 'filter' | 'watermark' | 'output';
+  enabledOps: Set<string>;
   previewMode: 'single' | 'compare';
   comparePos: number;
   // crop
@@ -56,6 +57,7 @@ interface State {
   watermarkPos: Position;
   watermarkOpacity: number;
   watermarkFontSize: number;
+  watermarkFontFamily: string;
   watermarkColor: string;
   watermarkRotate: number;
   watermarkTileGap: number;
@@ -88,6 +90,7 @@ export function createApp(root: HTMLElement) {
     busy: false,
     loadingText: '',
     activeTab: 'crop',
+    enabledOps: new Set(),
     previewMode: 'single',
     comparePos: 50,
     cropX: 0, cropY: 0, cropW: 0, cropH: 0,
@@ -98,7 +101,7 @@ export function createApp(root: HTMLElement) {
     filterContrast: 0, filterSaturate: 0, filterHueRotate: 0,
     filterBlur: 0, filterInvert: 0, filterOpacity: 0,
     watermarkText: '', watermarkTile: false, watermarkPos: Position.BottomRight,
-    watermarkOpacity: 0.5, watermarkFontSize: 32, watermarkColor: '#ffffff',
+    watermarkOpacity: 0.5, watermarkFontSize: 32, watermarkFontFamily: 'sans-serif', watermarkColor: '#ffffff',
     watermarkRotate: 0, watermarkTileGap: 40,
     outputFormat: 'image/jpeg', outputQuality: 0.8, outputMaxSize: 0,
     compressionMode: 'quality',
@@ -189,7 +192,7 @@ export function createApp(root: HTMLElement) {
             <h2>2. 处理选项</h2>
             <div class="tabs">
               ${(['crop', 'resize', 'rotate', 'filter', 'watermark', 'output'] as const)
-                .map((t) => `<div class="tab ${state.activeTab === t ? 'active' : ''}" data-tab="${t}">${labelOf(t)}</div>`)
+                .map((t) => `<div class="tab ${state.activeTab === t ? 'active' : ''}" data-tab="${t}">${t !== 'output' && state.enabledOps.has(t) ? '<span class="tab-dot"></span>' : ''}${labelOf(t)}</div>`)
                 .join('')}
             </div>
             <div id="tabContent"></div>
@@ -213,6 +216,8 @@ export function createApp(root: HTMLElement) {
     if (t === 'crop') {
       el.innerHTML = `
         <div class="crop-grid">
+          <div class="control full"><label class="enable-step"><input type="checkbox" data-op="crop" ${state.enabledOps.has('crop') ? 'checked' : ''} /> 启用此步骤</label></div>
+          <div class="crop-grid-inner${state.enabledOps.has('crop') ? '' : ' disabled'}" data-op-group="crop">
           <div class="control"><label>X 偏移 (px)</label><input type="number" value="${state.cropX}" data-k="cropX" min="0" /></div>
           <div class="control"><label>Y 偏移 (px)</label><input type="number" value="${state.cropY}" data-k="cropY" min="0" /></div>
           <div class="control"><label>宽度 (px，0=自动)</label><input type="number" value="${state.cropW}" data-k="cropW" min="0" /></div>
@@ -223,10 +228,12 @@ export function createApp(root: HTMLElement) {
               ${Object.values(Position).map((p) => `<option value="${p}" ${state.cropAlign === p ? 'selected' : ''}>${p}</option>`).join('')}
             </select>
           </div>
-        </div>`;
+        </div></div>`;
     } else if (t === 'resize') {
       el.innerHTML = `
         <div class="controls">
+          <div class="control full"><label class="enable-step"><input type="checkbox" data-op="resize" ${state.enabledOps.has('resize') ? 'checked' : ''} /> 启用此步骤</label></div>
+          <div${state.enabledOps.has('resize') ? '' : ' class="disabled"'} data-op-group="resize">
           <div class="control"><label>目标宽度 (px，0=等比)</label><input type="number" value="${state.resizeW}" data-k="resizeW" min="0" /></div>
           <div class="control"><label>目标高度 (px，0=等比)</label><input type="number" value="${state.resizeH}" data-k="resizeH" min="0" /></div>
           <div class="control"><label>适配模式</label>
@@ -243,10 +250,12 @@ export function createApp(root: HTMLElement) {
               <option value="nearest" ${state.resizeAlgorithm === 'nearest' ? 'selected' : ''}>最近邻</option>
             </select>
           </div>
-        </div>`;
+        </div></div>`;
     } else if (t === 'rotate') {
       el.innerHTML = `
         <div class="controls">
+          <div class="control full"><label class="enable-step"><input type="checkbox" data-op="rotate" ${state.enabledOps.has('rotate') ? 'checked' : ''} /> 启用此步骤</label></div>
+          <div${state.enabledOps.has('rotate') ? '' : ' class="disabled"'} data-op-group="rotate">
           <div class="control"><label>旋转角度</label><input type="range" min="-180" max="180" value="${state.rotateDegrees}" data-k="rotateDegrees" /><span style="font-size:12px;color:var(--color-text-secondary)">${state.rotateDegrees}°</span></div>
         </div>
         <div class="rotate-actions">
@@ -258,10 +267,12 @@ export function createApp(root: HTMLElement) {
         <div class="flip-actions">
           <button class="btn-mini${state.flipAxis === 'horizontal' ? ' active' : ''}" id="btnFlipH">水平翻转</button>
           <button class="btn-mini${state.flipAxis === 'vertical' ? ' active' : ''}" id="btnFlipV">垂直翻转</button>
-        </div>`;
+        </div></div></div>`;
     } else if (t === 'filter') {
       el.innerHTML = `
         <div class="controls">
+          <div class="control full"><label class="enable-step"><input type="checkbox" data-op="filter" ${state.enabledOps.has('filter') ? 'checked' : ''} /> 启用此步骤</label></div>
+          <div${state.enabledOps.has('filter') ? '' : ' class="disabled"'} data-op-group="filter">
           <div class="control"><label>灰度 (0-1)</label><input type="range" min="0" max="1" step="0.05" value="${state.filterGrayscale}" data-k="filterGrayscale" /></div>
           <div class="control"><label>棕褐 (0-1)</label><input type="range" min="0" max="1" step="0.05" value="${state.filterSepia}" data-k="filterSepia" /></div>
           <div class="control"><label>亮度 (-1~1)</label><input type="range" min="-1" max="1" step="0.05" value="${state.filterBrightness}" data-k="filterBrightness" /></div>
@@ -271,10 +282,12 @@ export function createApp(root: HTMLElement) {
           <div class="control"><label>高斯模糊 (px)</label><input type="range" min="0" max="10" step="0.5" value="${state.filterBlur}" data-k="filterBlur" /></div>
           <div class="control"><label>反相 (0-1)</label><input type="range" min="0" max="1" step="0.05" value="${state.filterInvert}" data-k="filterInvert" /></div>
           <div class="control"><label>透明度 (0-1)</label><input type="range" min="0" max="1" step="0.05" value="${state.filterOpacity}" data-k="filterOpacity" /></div>
-        </div>`;
+        </div></div>`;
     } else if (t === 'watermark') {
       el.innerHTML = `
         <div class="controls">
+          <div class="control full"><label class="enable-step"><input type="checkbox" data-op="watermark" ${state.enabledOps.has('watermark') ? 'checked' : ''} /> 启用此步骤</label></div>
+          <div${state.enabledOps.has('watermark') ? '' : ' class="disabled"'} data-op-group="watermark">
           <div class="control"><label>水印文字</label><input type="text" value="${state.watermarkText}" data-k="watermarkText" placeholder="例如: © imgkit" /></div>
           <div class="control"><label>平铺模式</label><input type="checkbox" data-k="watermarkTile" ${state.watermarkTile ? 'checked' : ''} /></div>
           <div class="control"><label>位置</label>
@@ -284,10 +297,22 @@ export function createApp(root: HTMLElement) {
           </div>
           <div class="control"><label>透明度</label><input type="range" min="0.05" max="1" step="0.05" value="${state.watermarkOpacity}" data-k="watermarkOpacity" /></div>
           <div class="control"><label>字体大小</label><input type="number" min="8" max="200" value="${state.watermarkFontSize}" data-k="watermarkFontSize" /></div>
-          <div class="control"><label>颜色 </label><input type="color" value="${state.watermarkColor}" data-k="watermarkColor" style="padding:0 4px;" /></div>
+          <div class="control"><label>字体族</label>
+            <select data-k="watermarkFontFamily">
+              <option value="sans-serif" ${state.watermarkFontFamily === 'sans-serif' ? 'selected' : ''}>sans-serif</option>
+              <option value="serif" ${state.watermarkFontFamily === 'serif' ? 'selected' : ''}>serif</option>
+              <option value="monospace" ${state.watermarkFontFamily === 'monospace' ? 'selected' : ''}>monospace</option>
+              <option value="cursive" ${state.watermarkFontFamily === 'cursive' ? 'selected' : ''}>cursive</option>
+              <option value="fantasy" ${state.watermarkFontFamily === 'fantasy' ? 'selected' : ''}>fantasy</option>
+              <option value="Arial" ${state.watermarkFontFamily === 'Arial' ? 'selected' : ''}>Arial</option>
+              <option value="Georgia" ${state.watermarkFontFamily === 'Georgia' ? 'selected' : ''}>Georgia</option>
+              <option value="Impact" ${state.watermarkFontFamily === 'Impact' ? 'selected' : ''}>Impact</option>
+            </select>
+          </div>
+          <div class="control"><label>颜色</label><input type="color" value="${state.watermarkColor}" data-k="watermarkColor" /></div>
           <div class="control"><label>旋转角度</label><input type="number" min="-180" max="180" value="${state.watermarkRotate}" data-k="watermarkRotate" /></div>
           ${state.watermarkTile ? `<div class="control"><label>平铺间距</label><input type="number" min="0" max="500" value="${state.watermarkTileGap}" data-k="watermarkTileGap" /></div>` : ''}
-        </div>`;
+        </div></div>`;
     } else if (t === 'output') {
       const exif = state.exifData;
       el.innerHTML = `
@@ -386,9 +411,17 @@ export function createApp(root: HTMLElement) {
       });
     });
 
-    // 输出按钮 + 翻转按钮 + 缩略图操作（事件委托）
+    // 输出按钮 + 翻转按钮 + 缩略图 + 启用步骤（事件委托）
     root.addEventListener('click', async (e) => {
       const target = e.target as HTMLElement;
+      // 启用步骤复选框
+      if (target instanceof HTMLInputElement && target.type === 'checkbox' && target.dataset.op) {
+        const op = target.dataset.op;
+        if (target.checked) state.enabledOps.add(op);
+        else state.enabledOps.delete(op);
+        renderTabContent();
+        return;
+      }
       // 缩略图删除
       const delBtn = target.closest('.thumb-del');
       if (delBtn) {
@@ -788,53 +821,57 @@ export function createApp(root: HTMLElement) {
       const steps: string[] = [];
 
       // 裁剪
-      const cropOpts = getCropOpts();
-      if (cropOpts) {
-        try {
-          const r = crop({ data, width: w, height: h }, cropOpts);
-          data = r.data; w = r.width; h = r.height;
-          steps.push('裁剪');
-        } catch (e) {
-          steps.push('裁剪(跳过)');
+      if (state.enabledOps.has('crop')) {
+        const cropOpts = getCropOpts();
+        if (cropOpts) {
+          try {
+            const r = crop({ data, width: w, height: h }, cropOpts);
+            data = r.data; w = r.width; h = r.height;
+            steps.push('裁剪');
+          } catch (e) {
+            steps.push('裁剪(跳过)');
+          }
         }
       }
 
       // 缩放
-      const rOpts = getResizeOpts();
-      if (rOpts) {
-        const r = resize({ data, width: w, height: h }, rOpts);
-        data = r.data; w = r.width; h = r.height;
-        steps.push('缩放');
+      if (state.enabledOps.has('resize')) {
+        const rOpts = getResizeOpts();
+        if (rOpts) {
+          const r = resize({ data, width: w, height: h }, rOpts);
+          data = r.data; w = r.width; h = r.height;
+          steps.push('缩放');
+        }
       }
 
       // 旋转
-      if (state.rotateDegrees !== 0) {
+      if (state.enabledOps.has('rotate') && state.rotateDegrees !== 0) {
         const r = rotate({ data, width: w, height: h }, state.rotateDegrees);
         data = r.data; w = r.width; h = r.height;
         steps.push('旋转');
       }
 
       // 翻转
-      if (state.flipAxis) {
+      if (state.enabledOps.has('rotate') && state.flipAxis) {
         const r = flip({ data, width: w, height: h }, state.flipAxis as FlipAxis);
         data = r.data; w = r.width; h = r.height;
         steps.push('翻转');
       }
 
       // 滤镜
-      if (hasFilterOpts()) {
+      if (state.enabledOps.has('filter') && hasFilterOpts()) {
         const r = filter({ data, width: w, height: h }, getFilterOpts());
         data = r.data; w = r.width; h = r.height;
         steps.push('滤镜');
       }
 
       // 水印
-      if (state.watermarkText) {
+      if (state.enabledOps.has('watermark') && state.watermarkText) {
         const wmOpts: WatermarkOptions = {
           text: state.watermarkText,
           position: state.watermarkPos,
           opacity: state.watermarkOpacity,
-          font: `${state.watermarkFontSize}px sans-serif`,
+          font: `${state.watermarkFontSize}px ${state.watermarkFontFamily}`,
           color: state.watermarkColor,
           rotate: state.watermarkRotate,
           tile: state.watermarkTile,
