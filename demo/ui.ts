@@ -122,7 +122,19 @@ export function createApp(root: HTMLElement) {
     const fileName = src?.file?.name ?? '';
 
     const sourcePreviewHtml = hasSource
-      ? `<div class="preview-thumb"><img src="${srcUrl}" alt="source" /></div>
+      ? `<div class="thumb-strip">
+           ${state.sources.map((s, i) => {
+             if (!s) return '';
+             const sel = i === state.currentIndex ? ' selected' : '';
+             return `<div class="thumb-item${sel}" data-idx="${i}">
+               <img src="${s.url}" alt="${s.file.name}" />
+               <button class="thumb-del" data-del="${i}" title="删除">×</button>
+               <span class="thumb-name">${s.file.name}</span>
+               <span class="thumb-meta">${s.fileSize} · ${s.image.width}×${s.image.height}px</span>
+             </div>`;
+           }).join('')}
+         </div>
+         <div class="preview-thumb"><img src="${srcUrl}" alt="source" /></div>
          <div class="meta">${fileName}${src!.camera ? ' · ' + src!.camera : ''} · ${src!.fileSize} · ${src!.image.width}×${src!.image.height}px${state.sourceMeta ? ' · ' + state.sourceMeta : ''}</div>`
       : '';
 
@@ -374,9 +386,27 @@ export function createApp(root: HTMLElement) {
       });
     });
 
-    // 输出按钮 + 翻转按钮（事件委托，因为按钮在 tabContent 里会被重新渲染）
+    // 输出按钮 + 翻转按钮 + 缩略图操作（事件委托）
     root.addEventListener('click', async (e) => {
       const target = e.target as HTMLElement;
+      // 缩略图删除
+      const delBtn = target.closest('.thumb-del');
+      if (delBtn) {
+        e.stopPropagation();
+        const idx = parseInt((delBtn as HTMLElement).dataset.del!, 10);
+        removeImage(idx);
+        return;
+      }
+      // 缩略图切换
+      const thumbItem = target.closest('.thumb-item');
+      if (thumbItem) {
+        const idx = parseInt((thumbItem as HTMLElement).dataset.idx!, 10);
+        if (idx !== state.currentIndex) {
+          state.currentIndex = idx;
+          render();
+        }
+        return;
+      }
       const id = target.id || target.closest('button')?.id;
       if (id === 'btnOutputRun') await doOutput();
       else if (id === 'btnFlipH') { state.flipAxis = state.flipAxis === 'horizontal' ? '' : 'horizontal'; render(); }
@@ -716,6 +746,34 @@ export function createApp(root: HTMLElement) {
     const ctx = canvas.getContext('2d')!;
     ctx.drawImage(img, 0, 0);
     return ctx.getImageData(0, 0, img.width, img.height);
+  }
+
+  function removeImage(idx: number): void {
+    const src = state.sources[idx];
+    if (src) URL.revokeObjectURL(src.url);
+    const res = state.results[idx];
+    if (res) URL.revokeObjectURL(res.url);
+    state.sources.splice(idx, 1);
+    state.results.splice(idx, 1);
+    if (state.currentIndex >= state.sources.length) {
+      state.currentIndex = Math.max(0, state.sources.length - 1);
+    }
+    if (state.sources.length === 0) {
+      state.exifData = null;
+      state.sourceMeta = '';
+    }
+    // 如果第一张被删了，重新提取第一张的 EXIF 和元信息
+    if (idx === 0 && state.sources.length > 0) {
+      const first = state.sources.find((s) => s !== null);
+      if (first) {
+        first.file.arrayBuffer().then((buf) => {
+          try { state.exifData = parseExif(buf); } catch { state.exifData = null; }
+        });
+        const meta = metadata({ data: first.image.data, width: first.image.width, height: first.image.height });
+        state.sourceMeta = `平均亮度: ${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`;
+      }
+    }
+    render();
   }
 
   function run() {

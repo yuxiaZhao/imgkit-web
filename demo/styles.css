@@ -512,6 +512,82 @@ header p {
   transition: border-color var(--duration-fast) var(--ease-out);
 }
 
+.thumb-strip {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px;
+  overflow-x: auto;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
+}
+
+.thumb-item {
+  position: relative;
+  flex-shrink: 0;
+  width: 100px;
+  border-radius: var(--radius-sm);
+  border: 2px solid transparent;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--color-bg);
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.thumb-item.selected {
+  border-color: var(--color-accent);
+}
+
+.thumb-item img {
+  width: 100%;
+  height: 70px;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb-del {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+  padding: 0;
+}
+
+.thumb-item:hover .thumb-del {
+  opacity: 1;
+}
+
+.thumb-name {
+  display: block;
+  padding: 2px 4px;
+  font-size: 11px;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.thumb-meta {
+  display: block;
+  padding: 0 4px 4px;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .preview-thumb img {
   max-width: 100%;
   max-height: 320px;
