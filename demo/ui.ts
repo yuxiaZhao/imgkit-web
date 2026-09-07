@@ -244,11 +244,13 @@ export function createApp(root: HTMLElement) {
           <div class="crop-preview" id="cropPreview">
             <img src="${srcUrl}" alt="crop preview" id="cropImg" draggable="false" />
             <div class="crop-rect" id="cropRect"${hasSel ? '' : ' style="display:none"'}</div>
+            <button class="crop-expand-btn" id="btnCropExpand" title="全屏框选">⛶</button>
           </div>
           <div class="crop-info-bar">
             <span class="crop-info" id="cropInfoText">${hasSel ? `选区: ${c.w}×${c.h} (${c.x}, ${c.y})` : '在图片上拖拽框选裁剪区域'}</span>
             <span class="crop-warning" id="cropWarning" style="display:none"></span>
             ${hasSel ? '<button class="btn-clear-crop" id="btnClearCrop">清除选区</button>' : ''}
+            <button class="btn-crop-expand-text" id="btnCropExpand2">全屏框选</button>
           </div>
         </div>` : ''}`;
     } else if (t === 'resize') {
@@ -574,6 +576,180 @@ export function createApp(root: HTMLElement) {
     syncCropInputs();
   }
 
+  function openCropLightbox() {
+    const src = getSource();
+    if (!src) return;
+
+    const existing = document.getElementById('cropLightbox');
+    if (existing) existing.remove();
+
+    const c = cr();
+    const hasSel = c.w > 0 && c.h > 0;
+
+    const lb = document.createElement('div');
+    lb.className = 'crop-lightbox';
+    lb.id = 'cropLightbox';
+    lb.innerHTML = `
+      <div class="crop-lb-mask"></div>
+      <div class="crop-lb-panel">
+        <div class="crop-lb-toolbar">
+          <span class="crop-lb-info" id="cropLbInfo">${hasSel ? `选区: ${c.w}×${c.h} (${c.x}, ${c.y})` : '在图片上拖拽框选裁剪区域'}</span>
+          <button class="crop-lb-clear" id="cropLbClear">清除</button>
+          <button class="crop-lb-close" id="cropLbClose">&times;</button>
+        </div>
+        <div class="crop-lb-stage" id="cropLbStage">
+          <img src="${src.url}" id="cropLbImg" draggable="false" />
+          <div class="crop-lb-rect" id="cropLbRect"${hasSel ? '' : ' style="display:none"'}</div>
+        </div>
+      </div>`;
+    document.body.appendChild(lb);
+
+    const img = document.getElementById('cropLbImg') as HTMLImageElement;
+    const rect = document.getElementById('cropLbRect') as HTMLElement;
+    const stage = document.getElementById('cropLbStage') as HTMLElement;
+    const info = document.getElementById('cropLbInfo') as HTMLElement;
+    const mask = lb.querySelector('.crop-lb-mask') as HTMLElement;
+
+    // 转发 cr() 引用，灯箱关闭前不污染 state（用临时变量，关闭时一次性写入）
+    let tmpX = c.x, tmpY = c.y, tmpW = c.w, tmpH = c.h;
+
+    function stageImgRect() {
+      const r = img.getBoundingClientRect();
+      const natW = img.naturalWidth, natH = img.naturalHeight;
+      const cW = r.width, cH = r.height;
+      const natRatio = natW / natH;
+      const cRatio = cW / cH;
+      let dw: number, dh: number, ox: number, oy: number;
+      if (natRatio > cRatio) {
+        dw = cW; dh = cW / natRatio; ox = 0; oy = (cH - dh) / 2;
+      } else {
+        dh = cH; dw = cH * natRatio; ox = (cW - dw) / 2; oy = 0;
+      }
+      return { left: r.left + ox, top: r.top + oy, width: dw, height: dh, scaleX: natW / dw, scaleY: natH / dh };
+    }
+
+    function drawLbRect() {
+      if (tmpW <= 0 || tmpH <= 0) { rect.style.display = 'none'; return; }
+      const r = img.getBoundingClientRect();
+      const natW = img.naturalWidth, natH = img.naturalHeight;
+      const cW = r.width, cH = r.height;
+      const natRatio = natW / natH;
+      const cRatio = cW / cH;
+      let dw: number, dh: number, ox: number, oy: number;
+      if (natRatio > cRatio) {
+        dw = cW; dh = cW / natRatio; ox = 0; oy = (cH - dh) / 2;
+      } else {
+        dh = cH; dw = cH * natRatio; ox = (cW - dw) / 2; oy = 0;
+      }
+      const sx = dw / natW, sy = dh / natH;
+      rect.style.display = 'block';
+      rect.style.left = (tmpX * sx) + 'px';
+      rect.style.top = (tmpY * sy) + 'px';
+      rect.style.width = (tmpW * sx) + 'px';
+      rect.style.height = (tmpH * sy) + 'px';
+    }
+
+    function updateLbInfo() {
+      if (tmpW > 0 && tmpH > 0) {
+        info.textContent = `选区: ${tmpW}×${tmpH} (${tmpX}, ${tmpY})`;
+      } else {
+        info.textContent = '在图片上拖拽框选裁剪区域';
+      }
+    }
+
+    function commitAndClose() {
+      c.x = tmpX; c.y = tmpY; c.w = tmpW; c.h = tmpH;
+      lb.remove();
+      syncCropInputs();
+      updateCropInfo();
+      checkCropSize();
+      showClearBtn();
+      // 刷新内嵌预览的矩形
+      const inlineRect = document.getElementById('cropRect');
+      const inlineImg = document.getElementById('cropImg') as HTMLImageElement | null;
+      if (inlineRect && inlineImg && tmpW > 0 && tmpH > 0) drawCropRect(inlineRect, inlineImg);
+      else if (inlineRect) inlineRect.style.display = 'none';
+    }
+
+    // 已有选区时先画出来
+    if (img.complete && img.naturalWidth > 0) {
+      drawLbRect();
+    } else {
+      img.addEventListener('load', drawLbRect, { once: true });
+    }
+
+    let drawing = false;
+    let sx = 0, sy = 0;
+
+    stage.addEventListener('mousedown', (e) => {
+      if ((e.target as HTMLElement).closest('.crop-lb-toolbar')) return;
+      drawing = true;
+      const d = stageImgRect();
+      sx = Math.max(0, Math.min(d.width, e.clientX - d.left));
+      sy = Math.max(0, Math.min(d.height, e.clientY - d.top));
+      rect.style.display = 'block';
+      rect.style.left = sx + 'px';
+      rect.style.top = sy + 'px';
+      rect.style.width = '0px';
+      rect.style.height = '0px';
+      e.preventDefault();
+    });
+
+    function onLbMove(e: MouseEvent) {
+      if (!drawing) return;
+      const d = stageImgRect();
+      const cx = Math.max(0, Math.min(d.width, e.clientX - d.left));
+      const cy = Math.max(0, Math.min(d.height, e.clientY - d.top));
+      const rx = Math.min(sx, cx), ry = Math.min(sy, cy);
+      const rw = Math.abs(cx - sx), rh = Math.abs(cy - sy);
+      rect.style.left = rx + 'px';
+      rect.style.top = ry + 'px';
+      rect.style.width = rw + 'px';
+      rect.style.height = rh + 'px';
+    }
+
+    function onLbUp(_e: MouseEvent) {
+      if (!drawing) return;
+      drawing = false;
+      const d = stageImgRect();
+      const rLeft = parseFloat(rect.style.left) || 0;
+      const rTop = parseFloat(rect.style.top) || 0;
+      const rW = parseFloat(rect.style.width) || 0;
+      const rH = parseFloat(rect.style.height) || 0;
+      if (rW < 5 || rH < 5) {
+        rect.style.display = 'none';
+        return;
+      }
+      tmpX = Math.round(rLeft * d.scaleX);
+      tmpY = Math.round(rTop * d.scaleY);
+      tmpW = Math.round(rW * d.scaleX);
+      tmpH = Math.round(rH * d.scaleY);
+      updateLbInfo();
+    }
+
+    window.addEventListener('mousemove', onLbMove);
+    window.addEventListener('mouseup', onLbUp);
+
+    function cleanup() {
+      window.removeEventListener('mousemove', onLbMove);
+      window.removeEventListener('mouseup', onLbUp);
+      document.removeEventListener('keydown', onKey);
+    }
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { cleanup(); commitAndClose(); }
+    }
+    document.addEventListener('keydown', onKey);
+
+    mask.addEventListener('click', () => { cleanup(); commitAndClose(); });
+    document.getElementById('cropLbClose')?.addEventListener('click', () => { cleanup(); commitAndClose(); });
+    document.getElementById('cropLbClear')?.addEventListener('click', () => {
+      tmpX = 0; tmpY = 0; tmpW = 0; tmpH = 0;
+      rect.style.display = 'none';
+      updateLbInfo();
+    });
+  }
+
   function bind() {
     const drop = document.getElementById('drop') as HTMLElement;
     const fileInput = document.getElementById('file') as HTMLInputElement;
@@ -639,6 +815,11 @@ export function createApp(root: HTMLElement) {
     // 输出按钮 + 翻转按钮 + 缩略图 + 启用步骤（事件委托）
     root.addEventListener('click', async (e) => {
       const target = e.target as HTMLElement;
+      // 全屏框选灯箱
+      if (target.id === 'btnCropExpand' || target.id === 'btnCropExpand2' || target.closest('#btnCropExpand')) {
+        openCropLightbox();
+        return;
+      }
       // 清除裁剪选区
       if (target.id === 'btnClearCrop' || target.closest('#btnClearCrop')) {
         clearCropSelection();
