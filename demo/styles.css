@@ -983,11 +983,11 @@ header p {
 
 .crop-preview {
   position: relative;
-  display: inline-block;
+  display: block;
+  max-width: 100%;
   cursor: crosshair;
   user-select: none;
   border-radius: 8px;
-  overflow: hidden;
   border: 1px solid var(--color-border-light);
   background: var(--color-surface);
   line-height: 0;

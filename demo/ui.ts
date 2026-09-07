@@ -26,11 +26,8 @@ interface State {
   enabledOps: Set<string>;
   previewMode: 'single' | 'compare';
   comparePos: number;
-  // crop
-  cropX: number;
-  cropY: number;
-  cropW: number;
-  cropH: number;
+  // crop — 每张图片独立选区
+  cropRegions: { x: number; y: number; w: number; h: number }[];
   cropRatio: string;
   cropAlign: Position;
   // resize
@@ -93,7 +90,7 @@ export function createApp(root: HTMLElement) {
     enabledOps: new Set(),
     previewMode: 'single',
     comparePos: 50,
-    cropX: 0, cropY: 0, cropW: 0, cropH: 0,
+    cropRegions: [],
     cropRatio: '', cropAlign: Position.Center,
     resizeW: 0, resizeH: 0, resizeFit: 'contain', resizeAlgorithm: 'bilinear',
     rotateDegrees: 0, flipAxis: '',
@@ -115,6 +112,12 @@ export function createApp(root: HTMLElement) {
   }
   function getResult(): ResultItem | null {
     return state.results[state.currentIndex] ?? null;
+  }
+
+  function cr(i?: number) {
+    const idx = i ?? state.currentIndex;
+    if (!state.cropRegions[idx]) state.cropRegions[idx] = { x: 0, y: 0, w: 0, h: 0 };
+    return state.cropRegions[idx];
   }
 
   function render() {
@@ -219,15 +222,16 @@ export function createApp(root: HTMLElement) {
     if (t === 'crop') {
       const src = getSource();
       const srcUrl = src?.url ?? '';
-      const hasSel = state.cropW > 0 && state.cropH > 0;
+      const c = cr();
+      const hasSel = c.w > 0 && c.h > 0;
       el.innerHTML = `
         <div class="crop-grid">
           <div class="control full"><label class="enable-step"><input type="checkbox" data-op="crop" ${state.enabledOps.has('crop') ? 'checked' : ''} /> 启用此步骤</label></div>
           <div class="crop-grid-inner${state.enabledOps.has('crop') ? '' : ' disabled'}" data-op-group="crop">
-          <div class="control"><label>X 偏移 (px)</label><input type="number" value="${state.cropX}" data-k="cropX" min="0" /></div>
-          <div class="control"><label>Y 偏移 (px)</label><input type="number" value="${state.cropY}" data-k="cropY" min="0" /></div>
-          <div class="control"><label>宽度 (px，0=自动)</label><input type="number" value="${state.cropW}" data-k="cropW" min="0" /></div>
-          <div class="control"><label>高度 (px，0=自动)</label><input type="number" value="${state.cropH}" data-k="cropH" min="0" /></div>
+          <div class="control"><label>X 偏移 (px)</label><input type="number" value="${c.x}" data-k="cropX" min="0" /></div>
+          <div class="control"><label>Y 偏移 (px)</label><input type="number" value="${c.y}" data-k="cropY" min="0" /></div>
+          <div class="control"><label>宽度 (px，0=自动)</label><input type="number" value="${c.w}" data-k="cropW" min="0" /></div>
+          <div class="control"><label>高度 (px，0=自动)</label><input type="number" value="${c.h}" data-k="cropH" min="0" /></div>
           <div class="control full"><label>宽高比（如 16:9 填 16/9，留空则按坐标裁剪）</label><input type="text" value="${state.cropRatio}" data-k="cropRatio" placeholder="例: 16/9" /></div>
           <div class="control full"><label>对齐方式（宽高比裁剪时生效）</label>
             <select data-k="cropAlign">
@@ -242,7 +246,7 @@ export function createApp(root: HTMLElement) {
             <div class="crop-rect" id="cropRect"${hasSel ? '' : ' style="display:none"'}</div>
           </div>
           <div class="crop-info-bar">
-            <span class="crop-info" id="cropInfoText">${hasSel ? `选区: ${state.cropW}×${state.cropH} (${state.cropX}, ${state.cropY})` : '在图片上拖拽框选裁剪区域'}</span>
+            <span class="crop-info" id="cropInfoText">${hasSel ? `选区: ${c.w}×${c.h} (${c.x}, ${c.y})` : '在图片上拖拽框选裁剪区域'}</span>
             <span class="crop-warning" id="cropWarning" style="display:none"></span>
             ${hasSel ? '<button class="btn-clear-crop" id="btnClearCrop">清除选区</button>' : ''}
           </div>
@@ -377,7 +381,8 @@ export function createApp(root: HTMLElement) {
     if (_cropCleanup) { _cropCleanup(); _cropCleanup = null; }
 
     function setupExistingRect() {
-      if (state.cropW > 0 && state.cropH > 0) {
+      const c = cr();
+      if (c.w > 0 && c.h > 0) {
         drawCropRect(rect, img!);
         checkCropSize();
       }
@@ -444,10 +449,11 @@ export function createApp(root: HTMLElement) {
         rect.style.display = 'none';
         return;
       }
-      state.cropX = Math.round(rLeft * d.scaleX);
-      state.cropY = Math.round(rTop * d.scaleY);
-      state.cropW = Math.round(rW * d.scaleX);
-      state.cropH = Math.round(rH * d.scaleY);
+      const c = cr();
+      c.x = Math.round(rLeft * d.scaleX);
+      c.y = Math.round(rTop * d.scaleY);
+      c.w = Math.round(rW * d.scaleX);
+      c.h = Math.round(rH * d.scaleY);
       syncCropInputs();
       updateCropInfo();
       checkCropSize();
@@ -476,18 +482,20 @@ export function createApp(root: HTMLElement) {
       dh = cH; dw = cH * natRatio; ox = (cW - dw) / 2; oy = 0;
     }
     const scaleX = dw / natW, scaleY = dh / natH;
+    const c = cr();
     rect.style.display = 'block';
-    rect.style.left = (state.cropX * scaleX) + 'px';
-    rect.style.top = (state.cropY * scaleY) + 'px';
-    rect.style.width = (state.cropW * scaleX) + 'px';
-    rect.style.height = (state.cropH * scaleY) + 'px';
+    rect.style.left = (c.x * scaleX) + 'px';
+    rect.style.top = (c.y * scaleY) + 'px';
+    rect.style.width = (c.w * scaleX) + 'px';
+    rect.style.height = (c.h * scaleY) + 'px';
   }
 
   function refreshCropOverlay() {
     const img = document.getElementById('cropImg') as HTMLImageElement | null;
     const rect = document.getElementById('cropRect');
     if (!img || !rect) return;
-    if (state.cropW > 0 && state.cropH > 0) {
+    const c = cr();
+    if (c.w > 0 && c.h > 0) {
       drawCropRect(rect, img);
     } else {
       rect.style.display = 'none';
@@ -499,7 +507,8 @@ export function createApp(root: HTMLElement) {
   }
 
   function syncCropInputs() {
-    const map: Record<string, number> = { cropX: state.cropX, cropY: state.cropY, cropW: state.cropW, cropH: state.cropH };
+    const c = cr();
+    const map: Record<string, number> = { cropX: c.x, cropY: c.y, cropW: c.w, cropH: c.h };
     for (const [k, v] of Object.entries(map)) {
       const el = document.querySelector(`[data-k="${k}"]`) as HTMLInputElement | null;
       if (el) el.value = String(v);
@@ -509,8 +518,9 @@ export function createApp(root: HTMLElement) {
   function updateCropInfo() {
     const info = document.getElementById('cropInfoText');
     if (!info) return;
-    if (state.cropW > 0 && state.cropH > 0) {
-      info.textContent = `选区: ${state.cropW}×${state.cropH} (${state.cropX}, ${state.cropY})`;
+    const c = cr();
+    if (c.w > 0 && c.h > 0) {
+      info.textContent = `选区: ${c.w}×${c.h} (${c.x}, ${c.y})`;
     } else {
       info.textContent = '在图片上拖拽框选裁剪区域';
     }
@@ -520,11 +530,12 @@ export function createApp(root: HTMLElement) {
     const warn = document.getElementById('cropWarning');
     if (!warn) return;
     const src = getSource();
-    if (!src || state.cropW <= 0 || state.cropH <= 0) {
+    const c = cr();
+    if (!src || c.w <= 0 || c.h <= 0) {
       warn.style.display = 'none';
       return;
     }
-    const area = state.cropW * state.cropH;
+    const area = c.w * c.h;
     const total = src.image.width * src.image.height;
     if (area < total * 0.01) {
       warn.style.display = '';
@@ -538,7 +549,8 @@ export function createApp(root: HTMLElement) {
     const bar = document.querySelector('.crop-info-bar');
     if (!bar) return;
     const existing = document.getElementById('btnClearCrop');
-    if (state.cropW > 0 && state.cropH > 0) {
+    const c = cr();
+    if (c.w > 0 && c.h > 0) {
       if (!existing) {
         const btn = document.createElement('button');
         btn.className = 'btn-clear-crop';
@@ -552,7 +564,8 @@ export function createApp(root: HTMLElement) {
   }
 
   function clearCropSelection() {
-    state.cropX = 0; state.cropY = 0; state.cropW = 0; state.cropH = 0;
+    const c = cr();
+    c.x = 0; c.y = 0; c.w = 0; c.h = 0;
     const rect = document.getElementById('cropRect');
     if (rect) rect.style.display = 'none';
     updateCropInfo();
@@ -678,6 +691,11 @@ export function createApp(root: HTMLElement) {
         val = (target as HTMLInputElement).value;
       }
       (state as any)[key] = val;
+      // crop 字段写入 cr()
+      if (key === 'cropX') cr().x = val;
+      else if (key === 'cropY') cr().y = val;
+      else if (key === 'cropW') cr().w = val;
+      else if (key === 'cropH') cr().h = val;
       if (key === 'rotateDegrees') {
         render();
       } else if (key === 'watermarkTile') {
@@ -699,6 +717,10 @@ export function createApp(root: HTMLElement) {
         val = (target as HTMLInputElement).value;
       }
       (state as any)[key] = val;
+      if (key === 'cropX') cr().x = val;
+      else if (key === 'cropY') cr().y = val;
+      else if (key === 'cropW') cr().w = val;
+      else if (key === 'cropH') cr().h = val;
       if (key.startsWith('crop')) {
         refreshCropOverlay();
       } else {
@@ -749,7 +771,7 @@ export function createApp(root: HTMLElement) {
       } catch { state.exifData = null; }
     }
     // 重置裁剪参数
-    state.cropW = 0; state.cropH = 0;
+    state.cropRegions = [];
     // 提取第一张的元信息
     if (firstSource) {
       const { image } = firstSource;
@@ -860,18 +882,19 @@ export function createApp(root: HTMLElement) {
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   }
 
-  function getCropOpts(): CropOptions | null {
+  function getCropOpts(i?: number): CropOptions | null {
     const src = getSource();
     if (!src) return null;
-    const { cropX, cropY, cropW, cropH, cropRatio } = state;
+    const { cropRatio } = state;
     if (cropRatio) {
       const parts = cropRatio.split('/').map(Number);
       if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
         return { aspectRatio: parts[0] / parts[1], align: state.cropAlign };
       }
     }
-    if (cropW > 0 && cropH > 0) {
-      return { x: cropX, y: cropY, width: cropW, height: cropH };
+    const c = cr(i);
+    if (c.w > 0 && c.h > 0) {
+      return { x: c.x, y: c.y, width: c.w, height: c.h };
     }
     return null;
   }
@@ -1010,6 +1033,7 @@ export function createApp(root: HTMLElement) {
     if (res) URL.revokeObjectURL(res.url);
     state.sources.splice(idx, 1);
     state.results.splice(idx, 1);
+    state.cropRegions.splice(idx, 1);
     if (state.currentIndex >= state.sources.length) {
       state.currentIndex = Math.max(0, state.sources.length - 1);
     }
@@ -1044,7 +1068,7 @@ export function createApp(root: HTMLElement) {
 
       // 裁剪
       if (state.enabledOps.has('crop')) {
-        const cropOpts = getCropOpts();
+        const cropOpts = getCropOpts(idx);
         if (cropOpts) {
           try {
             const r = crop({ data, width: w, height: h }, cropOpts);
