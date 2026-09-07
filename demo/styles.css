@@ -976,6 +976,74 @@ header p {
   grid-column: span 2;
 }
 
+/* ── 可视化框选 ── */
+.crop-visual {
+  margin-top: 18px;
+}
+
+.crop-preview {
+  position: relative;
+  display: inline-block;
+  cursor: crosshair;
+  user-select: none;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-light);
+  background: var(--color-surface);
+  line-height: 0;
+}
+
+.crop-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+}
+
+.crop-rect {
+  position: absolute;
+  border: 2px dashed rgba(59, 130, 246, 0.75);
+  background: rgba(59, 130, 246, 0.12);
+  pointer-events: none;
+  box-sizing: border-box;
+  z-index: 2;
+}
+
+.crop-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  flex-wrap: wrap;
+}
+
+.crop-info {
+  font-variant-numeric: tabular-nums;
+}
+
+.crop-warning {
+  color: #d97706;
+  font-weight: 500;
+}
+
+.btn-clear-crop {
+  padding: 3px 10px;
+  font-size: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-clear-crop:hover {
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
+}
+
 /* ═══════════════════════════════════════════════
    Responsive
    ═══════════════════════════════════════════════ */

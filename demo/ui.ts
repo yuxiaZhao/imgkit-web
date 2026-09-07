@@ -108,6 +108,8 @@ export function createApp(root: HTMLElement) {
     exifData: null,
   };
 
+  let _cropCleanup: (() => void) | null = null;
+
   function getSource(): SourceItem | null {
     return state.sources[state.currentIndex] ?? null;
   }
@@ -206,6 +208,7 @@ export function createApp(root: HTMLElement) {
       </div>
     `;
     renderTabContent();
+    if (state.activeTab === 'crop') initCropPreview();
     bind();
   }
 
@@ -214,6 +217,9 @@ export function createApp(root: HTMLElement) {
     if (!el) return;
     const t = state.activeTab;
     if (t === 'crop') {
+      const src = getSource();
+      const srcUrl = src?.url ?? '';
+      const hasSel = state.cropW > 0 && state.cropH > 0;
       el.innerHTML = `
         <div class="crop-grid">
           <div class="control full"><label class="enable-step"><input type="checkbox" data-op="crop" ${state.enabledOps.has('crop') ? 'checked' : ''} /> 启用此步骤</label></div>
@@ -228,7 +234,19 @@ export function createApp(root: HTMLElement) {
               ${Object.values(Position).map((p) => `<option value="${p}" ${state.cropAlign === p ? 'selected' : ''}>${p}</option>`).join('')}
             </select>
           </div>
-        </div></div>`;
+        </div></div>
+        ${srcUrl ? `
+        <div class="crop-visual">
+          <div class="crop-preview" id="cropPreview">
+            <img src="${srcUrl}" alt="crop preview" id="cropImg" draggable="false" />
+            <div class="crop-rect" id="cropRect"${hasSel ? '' : ' style="display:none"'}</div>
+          </div>
+          <div class="crop-info-bar">
+            <span class="crop-info" id="cropInfoText">${hasSel ? `选区: ${state.cropW}×${state.cropH} (${state.cropX}, ${state.cropY})` : '在图片上拖拽框选裁剪区域'}</span>
+            <span class="crop-warning" id="cropWarning" style="display:none"></span>
+            ${hasSel ? '<button class="btn-clear-crop" id="btnClearCrop">清除选区</button>' : ''}
+          </div>
+        </div>` : ''}`;
     } else if (t === 'resize') {
       el.innerHTML = `
         <div class="controls">
@@ -349,6 +367,200 @@ export function createApp(root: HTMLElement) {
     }
   }
 
+  function initCropPreview() {
+    const preview = document.getElementById('cropPreview');
+    const img = document.getElementById('cropImg') as HTMLImageElement | null;
+    const rect = document.getElementById('cropRect');
+    if (!preview || !img || !rect) return;
+
+    // 清理上次的 window 监听
+    if (_cropCleanup) { _cropCleanup(); _cropCleanup = null; }
+
+    function setupExistingRect() {
+      if (state.cropW > 0 && state.cropH > 0) {
+        drawCropRect(rect, img!);
+        checkCropSize();
+      }
+    }
+    if (img.complete && img.naturalWidth > 0) {
+      setupExistingRect();
+    } else {
+      img.addEventListener('load', setupExistingRect, { once: true });
+    }
+
+    let drawing = false;
+    let sx = 0, sy = 0;
+
+    function imgDisplayRect() {
+      const r = img!.getBoundingClientRect();
+      const natW = img!.naturalWidth, natH = img!.naturalHeight;
+      const cW = r.width, cH = r.height;
+      const natRatio = natW / natH;
+      const cRatio = cW / cH;
+      let dw: number, dh: number, ox: number, oy: number;
+      if (natRatio > cRatio) {
+        dw = cW; dh = cW / natRatio; ox = 0; oy = (cH - dh) / 2;
+      } else {
+        dh = cH; dw = cH * natRatio; ox = (cW - dw) / 2; oy = 0;
+      }
+      return { left: r.left + ox, top: r.top + oy, width: dw, height: dh, scaleX: natW / dw, scaleY: natH / dh };
+    }
+
+    function onDown(e: MouseEvent) {
+      drawing = true;
+      const d = imgDisplayRect();
+      sx = Math.max(0, Math.min(d.width, e.clientX - d.left));
+      sy = Math.max(0, Math.min(d.height, e.clientY - d.top));
+      rect.style.display = 'block';
+      rect.style.left = sx + 'px';
+      rect.style.top = sy + 'px';
+      rect.style.width = '0px';
+      rect.style.height = '0px';
+      e.preventDefault();
+    }
+
+    function onMove(e: MouseEvent) {
+      if (!drawing) return;
+      const d = imgDisplayRect();
+      const cx = Math.max(0, Math.min(d.width, e.clientX - d.left));
+      const cy = Math.max(0, Math.min(d.height, e.clientY - d.top));
+      const rx = Math.min(sx, cx), ry = Math.min(sy, cy);
+      const rw = Math.abs(cx - sx), rh = Math.abs(cy - sy);
+      rect.style.left = rx + 'px';
+      rect.style.top = ry + 'px';
+      rect.style.width = rw + 'px';
+      rect.style.height = rh + 'px';
+    }
+
+    function onUp(_e: MouseEvent) {
+      if (!drawing) return;
+      drawing = false;
+      const d = imgDisplayRect();
+      const rLeft = parseFloat(rect.style.left) || 0;
+      const rTop = parseFloat(rect.style.top) || 0;
+      const rW = parseFloat(rect.style.width) || 0;
+      const rH = parseFloat(rect.style.height) || 0;
+      if (rW < 5 || rH < 5) {
+        rect.style.display = 'none';
+        return;
+      }
+      state.cropX = Math.round(rLeft * d.scaleX);
+      state.cropY = Math.round(rTop * d.scaleY);
+      state.cropW = Math.round(rW * d.scaleX);
+      state.cropH = Math.round(rH * d.scaleY);
+      syncCropInputs();
+      updateCropInfo();
+      checkCropSize();
+      showClearBtn();
+    }
+
+    preview.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    _cropCleanup = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }
+
+  function drawCropRect(rect: HTMLElement, img: HTMLImageElement) {
+    const r = img.getBoundingClientRect();
+    const natW = img.naturalWidth, natH = img.naturalHeight;
+    const cW = r.width, cH = r.height;
+    const natRatio = natW / natH;
+    const cRatio = cW / cH;
+    let dw: number, dh: number, ox: number, oy: number;
+    if (natRatio > cRatio) {
+      dw = cW; dh = cW / natRatio; ox = 0; oy = (cH - dh) / 2;
+    } else {
+      dh = cH; dw = cH * natRatio; ox = (cW - dw) / 2; oy = 0;
+    }
+    const scaleX = dw / natW, scaleY = dh / natH;
+    rect.style.display = 'block';
+    rect.style.left = (state.cropX * scaleX) + 'px';
+    rect.style.top = (state.cropY * scaleY) + 'px';
+    rect.style.width = (state.cropW * scaleX) + 'px';
+    rect.style.height = (state.cropH * scaleY) + 'px';
+  }
+
+  function refreshCropOverlay() {
+    const img = document.getElementById('cropImg') as HTMLImageElement | null;
+    const rect = document.getElementById('cropRect');
+    if (!img || !rect) return;
+    if (state.cropW > 0 && state.cropH > 0) {
+      drawCropRect(rect, img);
+    } else {
+      rect.style.display = 'none';
+    }
+    updateCropInfo();
+    checkCropSize();
+    showClearBtn();
+    syncCropInputs();
+  }
+
+  function syncCropInputs() {
+    const map: Record<string, number> = { cropX: state.cropX, cropY: state.cropY, cropW: state.cropW, cropH: state.cropH };
+    for (const [k, v] of Object.entries(map)) {
+      const el = document.querySelector(`[data-k="${k}"]`) as HTMLInputElement | null;
+      if (el) el.value = String(v);
+    }
+  }
+
+  function updateCropInfo() {
+    const info = document.getElementById('cropInfoText');
+    if (!info) return;
+    if (state.cropW > 0 && state.cropH > 0) {
+      info.textContent = `选区: ${state.cropW}×${state.cropH} (${state.cropX}, ${state.cropY})`;
+    } else {
+      info.textContent = '在图片上拖拽框选裁剪区域';
+    }
+  }
+
+  function checkCropSize() {
+    const warn = document.getElementById('cropWarning');
+    if (!warn) return;
+    const src = getSource();
+    if (!src || state.cropW <= 0 || state.cropH <= 0) {
+      warn.style.display = 'none';
+      return;
+    }
+    const area = state.cropW * state.cropH;
+    const total = src.image.width * src.image.height;
+    if (area < total * 0.01) {
+      warn.style.display = '';
+      warn.textContent = '选区面积小于图片的 1%，可能影响裁剪效果';
+    } else {
+      warn.style.display = 'none';
+    }
+  }
+
+  function showClearBtn() {
+    const bar = document.querySelector('.crop-info-bar');
+    if (!bar) return;
+    const existing = document.getElementById('btnClearCrop');
+    if (state.cropW > 0 && state.cropH > 0) {
+      if (!existing) {
+        const btn = document.createElement('button');
+        btn.className = 'btn-clear-crop';
+        btn.id = 'btnClearCrop';
+        btn.textContent = '清除选区';
+        bar.appendChild(btn);
+      }
+    } else {
+      if (existing) existing.remove();
+    }
+  }
+
+  function clearCropSelection() {
+    state.cropX = 0; state.cropY = 0; state.cropW = 0; state.cropH = 0;
+    const rect = document.getElementById('cropRect');
+    if (rect) rect.style.display = 'none';
+    updateCropInfo();
+    checkCropSize();
+    showClearBtn();
+    syncCropInputs();
+  }
+
   function bind() {
     const drop = document.getElementById('drop') as HTMLElement;
     const fileInput = document.getElementById('file') as HTMLInputElement;
@@ -414,12 +626,18 @@ export function createApp(root: HTMLElement) {
     // 输出按钮 + 翻转按钮 + 缩略图 + 启用步骤（事件委托）
     root.addEventListener('click', async (e) => {
       const target = e.target as HTMLElement;
+      // 清除裁剪选区
+      if (target.id === 'btnClearCrop' || target.closest('#btnClearCrop')) {
+        clearCropSelection();
+        return;
+      }
       // 启用步骤复选框
       if (target instanceof HTMLInputElement && target.type === 'checkbox' && target.dataset.op) {
         const op = target.dataset.op;
         if (target.checked) state.enabledOps.add(op);
         else state.enabledOps.delete(op);
         renderTabContent();
+        if (state.activeTab === 'crop') initCropPreview();
         return;
       }
       // 缩略图删除
@@ -481,7 +699,11 @@ export function createApp(root: HTMLElement) {
         val = (target as HTMLInputElement).value;
       }
       (state as any)[key] = val;
-      renderTabContent();
+      if (key.startsWith('crop')) {
+        refreshCropOverlay();
+      } else {
+        renderTabContent();
+      }
     });
   }
 
