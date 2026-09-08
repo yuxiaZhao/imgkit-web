@@ -632,6 +632,147 @@ export function createApp(root: HTMLElement) {
     syncCropInputs();
   }
 
+  function openImageViewer(startIdx: number) {
+    const total = state.sources.length;
+    if (total === 0) return;
+
+    let idx = startIdx;
+    let zoom = 1;
+    let panX = 0;
+    let panY = 0;
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let panStartX = 0;
+    let panStartY = 0;
+
+    const ov = document.createElement('div');
+    ov.className = 'img-viewer';
+    ov.innerHTML = `
+      <div class="iv-backdrop"></div>
+      <button class="iv-close" title="关闭 (ESC)">&times;</button>
+      <div class="iv-toolbar">
+        <button class="iv-zoom-btn" data-zoom="out" title="缩小">&minus;</button>
+        <span class="iv-zoom-pct">100%</span>
+        <button class="iv-zoom-btn" data-zoom="in" title="放大">+</button>
+        <button class="iv-zoom-btn" data-zoom="reset" title="重置">1:1</button>
+      </div>
+      <div class="iv-stage">
+        <img class="iv-img" src="" alt="" draggable="false" />
+      </div>
+      ${total > 1 ? `
+      <div class="iv-nav">
+        <button class="iv-nav-btn iv-prev" title="上一张 (←)">◀</button>
+        <span class="iv-counter">${idx + 1} / ${total}</span>
+        <button class="iv-nav-btn iv-next" title="下一张 (→)">▶</button>
+      </div>` : ''}
+    `;
+    document.body.appendChild(ov);
+
+    const img = ov.querySelector('.iv-img') as HTMLImageElement;
+    const pctEl = ov.querySelector('.iv-zoom-pct') as HTMLElement;
+    const counterEl = ov.querySelector('.iv-counter') as HTMLElement;
+
+    function loadImage() {
+      const src = state.sources[idx];
+      if (!src) return;
+      const res = state.results[idx];
+      img.src = res ? res.url : src.url;
+      img.alt = src.file.name;
+      // 重置缩放和平移
+      zoom = 1;
+      panX = 0;
+      panY = 0;
+      applyTransform();
+      if (counterEl) counterEl.textContent = `${idx + 1} / ${total}`;
+    }
+
+    function applyTransform() {
+      img.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`;
+      pctEl.textContent = `${Math.round(zoom * 100)}%`;
+    }
+
+    function zoomIn() { zoom = Math.min(zoom * 1.2, 8); applyTransform(); }
+    function zoomOut() { zoom = Math.max(zoom / 1.2, 0.2); applyTransform(); }
+    function zoomReset() { zoom = 1; panX = 0; panY = 0; applyTransform(); }
+
+    // 缩放按钮
+    ov.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('[data-zoom]') as HTMLElement | null;
+      if (!btn) return;
+      const action = btn.dataset.zoom;
+      if (action === 'in') zoomIn();
+      else if (action === 'out') zoomOut();
+      else if (action === 'reset') zoomReset();
+    });
+
+    // 滚轮缩放
+    ov.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.deltaY < 0) zoomIn();
+      else zoomOut();
+    }, { passive: false });
+
+    // 拖拽平移
+    img.addEventListener('mousedown', (e) => {
+      if (zoom <= 1) return;
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      panStartX = panX;
+      panStartY = panY;
+      img.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      panX = panStartX + (e.clientX - dragStartX);
+      panY = panStartY + (e.clientY - dragStartY);
+      applyTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      img.style.cursor = zoom > 1 ? 'grab' : 'default';
+    });
+
+    // 导航按钮
+    if (total > 1) {
+      ov.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest('.iv-prev, .iv-next') as HTMLElement | null;
+        if (!btn) return;
+        if (btn.classList.contains('iv-prev')) idx = (idx - 1 + total) % total;
+        else idx = (idx + 1) % total;
+        loadImage();
+      });
+    }
+
+    // 键盘
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { close(); return; }
+      if (total > 1) {
+        if (e.key === 'ArrowLeft') { idx = (idx - 1 + total) % total; loadImage(); }
+        if (e.key === 'ArrowRight') { idx = (idx + 1) % total; loadImage(); }
+      }
+      if (e.key === '+' || e.key === '=') zoomIn();
+      if (e.key === '-') zoomOut();
+      if (e.key === '0') zoomReset();
+    }
+    window.addEventListener('keydown', onKey);
+
+    // 关闭
+    function close() {
+      window.removeEventListener('keydown', onKey);
+      ov.remove();
+    }
+    ov.querySelector('.iv-close')!.addEventListener('click', close);
+    ov.querySelector('.iv-backdrop')!.addEventListener('click', close);
+
+    loadImage();
+  }
+
   function openCropLightbox() {
     const src = getSource();
     if (!src) return;
@@ -872,6 +1013,11 @@ export function createApp(root: HTMLElement) {
     // 输出按钮 + 翻转按钮 + 缩略图 + 启用步骤（事件委托）
     root.addEventListener('click', async (e) => {
       const target = e.target as HTMLElement;
+      // 点击预览图片 → 打开全屏灯箱
+      if (target.tagName === 'IMG' && (target.closest('.preview-thumb') || target.closest('.compare-img'))) {
+        openImageViewer(state.currentIndex);
+        return;
+      }
       // 全屏框选灯箱
       if (target.id === 'btnCropExpand' || target.id === 'btnCropExpand2' || target.closest('#btnCropExpand')) {
         openCropLightbox();
