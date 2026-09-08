@@ -26,6 +26,7 @@ interface State {
   enabledOps: Set<string>;
   previewMode: 'single' | 'compare';
   comparePos: number;
+  runError: string;
   // crop — 每张图片独立选区
   cropRegions: { x: number; y: number; w: number; h: number }[];
   cropRatio: string;
@@ -90,6 +91,7 @@ export function createApp(root: HTMLElement) {
     enabledOps: new Set(),
     previewMode: 'single',
     comparePos: 50,
+    runError: '',
     cropRegions: [],
     cropRatio: '', cropAlign: Position.Center,
     resizeW: 0, resizeH: 0, resizeFit: 'contain', resizeAlgorithm: 'bilinear',
@@ -201,6 +203,7 @@ export function createApp(root: HTMLElement) {
                 .join('')}
             </div>
             <div id="tabContent"></div>
+            ${state.runError ? `<div class="run-error">${state.runError}</div>` : ''}
             <button class="btn" id="run" ${hasSource && state.activeTab !== 'output' ? '' : 'disabled'} style="margin-top:var(--space-lg);${state.activeTab === 'output' ? 'display:none' : ''}">执行处理</button>
           </section>
         </div>
@@ -456,6 +459,7 @@ export function createApp(root: HTMLElement) {
       c.y = Math.round(rTop * d.scaleY);
       c.w = Math.round(rW * d.scaleX);
       c.h = Math.round(rH * d.scaleY);
+      state.runError = '';
       syncCropInputs();
       updateCropInfo();
       checkCropSize();
@@ -568,6 +572,7 @@ export function createApp(root: HTMLElement) {
   function clearCropSelection() {
     const c = cr();
     c.x = 0; c.y = 0; c.w = 0; c.h = 0;
+    state.runError = '';
     const rect = document.getElementById('cropRect');
     if (rect) rect.style.display = 'none';
     updateCropInfo();
@@ -659,6 +664,7 @@ export function createApp(root: HTMLElement) {
 
     function commitAndClose() {
       c.x = tmpX; c.y = tmpY; c.w = tmpW; c.h = tmpH;
+      state.runError = '';
       lb.remove();
       syncCropInputs();
       updateCropInfo();
@@ -830,6 +836,7 @@ export function createApp(root: HTMLElement) {
         const op = target.dataset.op;
         if (target.checked) state.enabledOps.add(op);
         else state.enabledOps.delete(op);
+        state.runError = '';
         renderTabContent();
         if (state.activeTab === 'crop') initCropPreview();
         return;
@@ -1238,6 +1245,24 @@ export function createApp(root: HTMLElement) {
 
   function run() {
     if (state.sources.length === 0) return;
+
+    // ── 前置校验 ──
+    if (state.enabledOps.size === 0) {
+      state.runError = '请至少启用一个处理步骤（勾选 Tab 页中的「启用此步骤」）';
+      render();
+      return;
+    }
+
+    if (state.enabledOps.has('crop')) {
+      const anyCropped = state.cropRegions.some((r) => r && r.w > 0 && r.h > 0);
+      if (!anyCropped) {
+        state.runError = '裁剪已启用，但未框选裁剪区域。请在裁剪 Tab 中拖拽框选或输入坐标';
+        render();
+        return;
+      }
+    }
+
+    state.runError = '';
     // 批量处理所有图片
     for (let idx = 0; idx < state.sources.length; idx++) {
       const src = state.sources[idx];
@@ -1311,7 +1336,8 @@ export function createApp(root: HTMLElement) {
       }
 
       if (steps.length === 0) {
-        alert('请至少设置一项处理参数');
+        state.runError = '处理参数不完整，请检查各步骤的设置';
+        render();
         return;
       }
 
