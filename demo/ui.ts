@@ -15,6 +15,48 @@ interface ResultItem {
   meta: string;
 }
 
+interface Step {
+  name: string;
+  fn: (img: ImageDataLike) => ImageDataLike;
+}
+
+class Pipeline {
+  steps: Step[] = [];
+  private undoStack: Step[][] = [];
+  private redoStack: Step[][] = [];
+
+  add(s: Step) {
+    this.undoStack.push([...this.steps]);
+    this.redoStack = [];
+    this.steps.push(s);
+  }
+
+  undo(): boolean {
+    if (this.undoStack.length === 0) return false;
+    this.redoStack.push([...this.steps]);
+    this.steps = this.undoStack.pop()!;
+    return true;
+  }
+
+  redo(): boolean {
+    if (this.redoStack.length === 0) return false;
+    this.undoStack.push([...this.steps]);
+    this.steps = this.redoStack.pop()!;
+    return true;
+  }
+
+  canUndo() { return this.undoStack.length > 0; }
+  canRedo() { return this.redoStack.length > 0; }
+  names() { return this.steps.map(s => s.name); }
+  isEmpty() { return this.steps.length === 0; }
+
+  apply(img: ImageDataLike): ImageDataLike {
+    let cur = img;
+    for (const s of this.steps) cur = s.fn(cur);
+    return cur;
+  }
+}
+
 interface State {
   sources: (SourceItem | null)[];
   results: ResultItem[];
@@ -27,6 +69,7 @@ interface State {
   previewMode: 'single' | 'compare';
   comparePos: number;
   runError: string;
+  pipeline: Pipeline | null;
   // crop — 每张图片独立选区
   cropRegions: { x: number; y: number; w: number; h: number }[];
   cropRatio: string;
@@ -92,6 +135,7 @@ export function createApp(root: HTMLElement) {
     previewMode: 'single',
     comparePos: 50,
     runError: '',
+    pipeline: null,
     cropRegions: [],
     cropRatio: '', cropAlign: Position.Center,
     resizeW: 0, resizeH: 0, resizeFit: 'contain', resizeAlgorithm: 'bilinear',
@@ -175,7 +219,14 @@ export function createApp(root: HTMLElement) {
              </div>`
         : '<p style="color:#95a5a6;margin-top:12px;">暂无结果，请执行处理。</p>';
       resultSectionHtml = `${toolbarHtml}${previewHtml}${
-        resMeta ? `<div class="result-info">${resMeta}</div>` : ''
+        resMeta ? `<div class="result-info">
+          <span class="result-meta-text">${resMeta}</span>
+          ${state.pipeline && (state.pipeline.canUndo() || state.pipeline.canRedo()) ? `
+          <span class="result-actions">
+            <button class="btn-undo-redo" id="btnUndo" ${state.pipeline.canUndo() ? '' : 'disabled'}>↩ 撤销</button>
+            <button class="btn-undo-redo" id="btnRedo" ${state.pipeline.canRedo() ? '' : 'disabled'}>↪ 重做</button>
+          </span>` : ''}
+        </div>` : ''
       }`;
     }
 
@@ -826,6 +877,15 @@ export function createApp(root: HTMLElement) {
         openCropLightbox();
         return;
       }
+      // 撤销 / 重做
+      if (target.id === 'btnUndo' || target.closest('#btnUndo')) {
+        if (state.pipeline?.undo()) reapplyPipeline();
+        return;
+      }
+      if (target.id === 'btnRedo' || target.closest('#btnRedo')) {
+        if (state.pipeline?.redo()) reapplyPipeline();
+        return;
+      }
       // 清除裁剪选区
       if (target.id === 'btnClearCrop' || target.closest('#btnClearCrop')) {
         clearCropSelection();
@@ -1190,12 +1250,15 @@ export function createApp(root: HTMLElement) {
       }
       const result = await compress(convertedData, opts);
       const url = URL.createObjectURL(result.blob);
-      const metaParts = [`${state.outputFormat}`, `${(result.size / 1024).toFixed(1)}KB`];
+      const prevMeta = state.results[state.currentIndex]?.meta || '';
+      const stepPrefix = state.pipeline && !state.pipeline.isEmpty()
+        ? `处理步骤：${state.pipeline.names().join(' → ')} · ` : '';
+      const outMeta = [`${state.outputFormat}`, `${(result.size / 1024).toFixed(1)}KB`];
       if (state.compressionMode === 'quality') {
-        metaParts.push(`quality=${result.quality.toFixed(2)}`);
+        outMeta.push(`quality=${result.quality.toFixed(2)}`);
       }
       if (state.results[state.currentIndex]) URL.revokeObjectURL(state.results[state.currentIndex].url);
-      state.results[state.currentIndex] = { url, meta: metaParts.join(' · ') };
+      state.results[state.currentIndex] = { url, meta: stepPrefix + outMeta.join(' · ') };
     } catch (e) {
       console.error('处理失败', e);
       alert('处理失败');
@@ -1263,97 +1326,120 @@ export function createApp(root: HTMLElement) {
     }
 
     state.runError = '';
-    // 批量处理所有图片
+
+    // ── 构建 Pipeline ──
+    const pipe = new Pipeline();
+
+    // 裁剪（按图索引）
+    if (state.enabledOps.has('crop')) {
+      pipe.add({
+        name: '裁剪',
+        fn: (img) => {
+          const idx = state.sources.findIndex(s => s?.image === img);
+          const realIdx = idx >= 0 ? idx : state.currentIndex;
+          const opts = getCropOpts(realIdx);
+          if (!opts) return img;
+          try { return crop(img, opts); } catch { return img; }
+        },
+      });
+    }
+
+    if (state.enabledOps.has('resize')) {
+      const rOpts = getResizeOpts();
+      if (rOpts) pipe.add({ name: '缩放', fn: (img) => resize(img, rOpts) });
+    }
+
+    if (state.enabledOps.has('rotate') && state.rotateDegrees !== 0) {
+      const deg = state.rotateDegrees;
+      pipe.add({ name: '旋转', fn: (img) => rotate(img, deg) });
+    }
+
+    if (state.enabledOps.has('rotate') && state.flipAxis) {
+      const axis = state.flipAxis as FlipAxis;
+      pipe.add({ name: '翻转', fn: (img) => flip(img, axis) });
+    }
+
+    if (state.enabledOps.has('filter') && hasFilterOpts()) {
+      const fOpts = getFilterOpts();
+      pipe.add({ name: '滤镜', fn: (img) => filter(img, fOpts) });
+    }
+
+    if (state.enabledOps.has('watermark') && state.watermarkText) {
+      const wmOpts: WatermarkOptions = {
+        text: state.watermarkText,
+        position: state.watermarkPos,
+        opacity: state.watermarkOpacity,
+        font: `${state.watermarkFontSize}px ${state.watermarkFontFamily}`,
+        color: state.watermarkColor,
+        rotate: state.watermarkRotate,
+        tile: state.watermarkTile,
+        tileGap: state.watermarkTileGap,
+      };
+      const textRenderer = createTextRenderer();
+      pipe.add({ name: '水印', fn: (img) => watermark(img, wmOpts, textRenderer) });
+    }
+
+    if (pipe.isEmpty()) {
+      state.runError = '处理参数不完整，请检查各步骤的设置';
+      render();
+      return;
+    }
+
+    state.pipeline = pipe;
+
+    // ── 批量处理所有图片 ──
     for (let idx = 0; idx < state.sources.length; idx++) {
       const src = state.sources[idx];
       if (!src) continue;
-      let data = src.image.data;
-      let w = src.image.width;
-      let h = src.image.height;
-      const steps: string[] = [];
+      state.currentIndex = idx; // 让 crop 闭包能找到正确的索引
+      const result = pipe.apply(src.image);
+      const steps = pipe.names();
+      const w = result.width;
+      const h = result.height;
 
-      // 裁剪
-      if (state.enabledOps.has('crop')) {
-        const cropOpts = getCropOpts(idx);
-        if (cropOpts) {
-          try {
-            const r = crop({ data, width: w, height: h }, cropOpts);
-            data = r.data; w = r.width; h = r.height;
-            steps.push('裁剪');
-          } catch (e) {
-            steps.push('裁剪(跳过)');
-          }
-        }
-      }
-
-      // 缩放
-      if (state.enabledOps.has('resize')) {
-        const rOpts = getResizeOpts();
-        if (rOpts) {
-          const r = resize({ data, width: w, height: h }, rOpts);
-          data = r.data; w = r.width; h = r.height;
-          steps.push('缩放');
-        }
-      }
-
-      // 旋转
-      if (state.enabledOps.has('rotate') && state.rotateDegrees !== 0) {
-        const r = rotate({ data, width: w, height: h }, state.rotateDegrees);
-        data = r.data; w = r.width; h = r.height;
-        steps.push('旋转');
-      }
-
-      // 翻转
-      if (state.enabledOps.has('rotate') && state.flipAxis) {
-        const r = flip({ data, width: w, height: h }, state.flipAxis as FlipAxis);
-        data = r.data; w = r.width; h = r.height;
-        steps.push('翻转');
-      }
-
-      // 滤镜
-      if (state.enabledOps.has('filter') && hasFilterOpts()) {
-        const r = filter({ data, width: w, height: h }, getFilterOpts());
-        data = r.data; w = r.width; h = r.height;
-        steps.push('滤镜');
-      }
-
-      // 水印
-      if (state.enabledOps.has('watermark') && state.watermarkText) {
-        const wmOpts: WatermarkOptions = {
-          text: state.watermarkText,
-          position: state.watermarkPos,
-          opacity: state.watermarkOpacity,
-          font: `${state.watermarkFontSize}px ${state.watermarkFontFamily}`,
-          color: state.watermarkColor,
-          rotate: state.watermarkRotate,
-          tile: state.watermarkTile,
-          tileGap: state.watermarkTileGap,
-        };
-        const textRenderer = createTextRenderer();
-        const r = watermark({ data, width: w, height: h }, wmOpts, textRenderer);
-        data = r.data; w = r.width; h = r.height;
-        steps.push('水印');
-      }
-
-      if (steps.length === 0) {
-        state.runError = '处理参数不完整，请检查各步骤的设置';
-        render();
-        return;
-      }
-
-      // 生成结果预览
       const canvas = document.createElement('canvas');
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext('2d')!;
-      ctx.putImageData(new ImageData(data, w, h), 0, 0);
+      ctx.putImageData(new ImageData(result.data, w, h), 0, 0);
       const url = canvas.toDataURL('image/png');
 
       if (state.results[idx]) URL.revokeObjectURL(state.results[idx].url);
-      const meta = metadata({ data, width: w, height: h });
+      const meta = metadata(result);
+      const kb = (atob(url.split(',')[1]).length / 1024).toFixed(1);
       state.results[idx] = {
         url,
-        meta: `处理步骤：${steps.join(' → ')} · 结果尺寸：${w}×${h}px · 平均亮度：${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`,
+        meta: `处理步骤：${steps.join(' → ')} · 结果尺寸：${w}×${h}px · ${kb}KB · 平均亮度：${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`,
+      };
+    }
+    render();
+  }
+
+  function reapplyPipeline() {
+    const pipe = state.pipeline;
+    if (!pipe || pipe.isEmpty()) return;
+
+    for (let idx = 0; idx < state.sources.length; idx++) {
+      const src = state.sources[idx];
+      if (!src) continue;
+      state.currentIndex = idx;
+      const result = pipe.apply(src.image);
+      const w = result.width;
+      const h = result.height;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d')!;
+      ctx.putImageData(new ImageData(result.data, w, h), 0, 0);
+      const url = canvas.toDataURL('image/png');
+
+      if (state.results[idx]) URL.revokeObjectURL(state.results[idx].url);
+      const meta = metadata(result);
+      const kb = (atob(url.split(',')[1]).length / 1024).toFixed(1);
+      state.results[idx] = {
+        url,
+        meta: `处理步骤：${pipe.names().join(' → ')} · 结果尺寸：${w}×${h}px · ${kb}KB · 平均亮度：${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`,
       };
     }
     render();
