@@ -635,10 +635,14 @@ export function createApp(root: HTMLElement) {
     syncCropInputs();
   }
 
+  let _downloading = false;
+
   async function downloadAllAsZip() {
+    if (_downloading) return;
     const results = state.results.filter(r => r);
     if (results.length === 0) return;
 
+    _downloading = true;
     const btn = document.getElementById('btnDownloadAll');
     if (btn) btn.textContent = '打包中...';
 
@@ -662,6 +666,7 @@ export function createApp(root: HTMLElement) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
+    _downloading = false;
     if (btn) btn.textContent = '下载全部 (ZIP)';
   }
 
