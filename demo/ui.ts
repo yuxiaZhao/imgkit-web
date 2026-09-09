@@ -2,6 +2,8 @@ import { crop, resize, rotate, flip, filter, watermark, metadata, compress, conv
 import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm, WatermarkOptions, ExifInfo, ImageMimeType } from 'imgkit';
 import { Position } from 'imgkit';
 
+declare var JSZip: any;
+
 interface SourceItem {
   file: File;
   url: string;
@@ -203,6 +205,7 @@ export function createApp(root: HTMLElement) {
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
             ${resUrl ? `<a class="btn" href="${resUrl}" download="imgkit-result.png">下载结果</a>` : ''}
+            ${state.results.filter(r => r).length > 1 ? `<button class="btn" id="btnDownloadAll">下载全部 (ZIP)</button>` : ''}
           </div>
         </div>`;
       const previewHtml = resUrl
@@ -632,6 +635,36 @@ export function createApp(root: HTMLElement) {
     syncCropInputs();
   }
 
+  async function downloadAllAsZip() {
+    const results = state.results.filter(r => r);
+    if (results.length === 0) return;
+
+    const btn = document.getElementById('btnDownloadAll');
+    if (btn) btn.textContent = '打包中...';
+
+    const zip = new (JSZip as any)();
+    const fetches = results.map(async (res, i) => {
+      const src = state.sources[i];
+      const name = src ? src.file.name.replace(/\.[^.]+$/, '') : `img${i + 1}`;
+      const resp = await fetch(res.url);
+      const blob = await resp.blob();
+      zip.file(`${name}.png`, blob);
+    });
+    await Promise.all(fetches);
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `imgkit-results-${state.results.length}p.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    if (btn) btn.textContent = '下载全部 (ZIP)';
+  }
+
   function openImageViewer(startIdx: number) {
     const total = state.sources.length;
     if (total === 0) return;
@@ -1021,6 +1054,11 @@ export function createApp(root: HTMLElement) {
       // 全屏框选灯箱
       if (target.id === 'btnCropExpand' || target.id === 'btnCropExpand2' || target.closest('#btnCropExpand')) {
         openCropLightbox();
+        return;
+      }
+      // 下载全部 ZIP
+      if (target.id === 'btnDownloadAll' || target.closest('#btnDownloadAll')) {
+        downloadAllAsZip();
         return;
       }
       // 撤销 / 重做
