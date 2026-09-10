@@ -226,8 +226,8 @@ export function createApp(root: HTMLElement) {
           <span class="result-meta-text">${resMeta}</span>
           ${state.pipeline && (state.pipeline.canUndo() || state.pipeline.canRedo()) ? `
           <span class="result-actions">
-            <button class="btn-undo-redo" id="btnUndo" ${state.pipeline.canUndo() ? '' : 'disabled'}>↩ 撤销</button>
-            <button class="btn-undo-redo" id="btnRedo" ${state.pipeline.canRedo() ? '' : 'disabled'}>↪ 重做</button>
+            <button class="btn-undo-redo" id="btnUndo" ${state.pipeline.canUndo() && !state.busy ? '' : 'disabled'}>↩ 撤销</button>
+            <button class="btn-undo-redo" id="btnRedo" ${state.pipeline.canRedo() && !state.busy ? '' : 'disabled'}>↪ 重做</button>
           </span>` : ''}
         </div>` : ''
       }`;
@@ -763,18 +763,21 @@ export function createApp(root: HTMLElement) {
       e.preventDefault();
     });
 
-    window.addEventListener('mousemove', (e) => {
+    function onMove(e: MouseEvent) {
       if (!isDragging) return;
       panX = panStartX + (e.clientX - dragStartX);
       panY = panStartY + (e.clientY - dragStartY);
       applyTransform();
-    });
+    }
 
-    window.addEventListener('mouseup', () => {
+    function onUp() {
       if (!isDragging) return;
       isDragging = false;
       img.style.cursor = zoom > 1 ? 'grab' : 'default';
-    });
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
 
     // 导航按钮
     if (total > 1) {
@@ -803,6 +806,8 @@ export function createApp(root: HTMLElement) {
     // 关闭
     function close() {
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
       ov.remove();
     }
     ov.querySelector('.iv-close')!.addEventListener('click', close);
@@ -1068,11 +1073,11 @@ export function createApp(root: HTMLElement) {
       }
       // 撤销 / 重做
       if (target.id === 'btnUndo' || target.closest('#btnUndo')) {
-        if (state.pipeline?.undo()) reapplyPipeline();
+        if (!state.busy && state.pipeline?.undo()) reapplyPipeline();
         return;
       }
       if (target.id === 'btnRedo' || target.closest('#btnRedo')) {
-        if (state.pipeline?.redo()) reapplyPipeline();
+        if (!state.busy && state.pipeline?.redo()) reapplyPipeline();
         return;
       }
       // 清除裁剪选区
