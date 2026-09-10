@@ -1,5 +1,6 @@
 {
-  "name": "imgkit",
+  "name": "imgpilot",
+  "author": "zhaoyuxia<yuxia__zhao@163.com>",
   "version": "0.1.0",
   "description": "前端图片处理工具库",
   "type": "module",
@@ -12,6 +13,10 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yuxiaZhao/imgkit.git"
   },
   "files": [
     "dist"

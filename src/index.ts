@@ -11,4 +11,4 @@ export * from "./convert";
 export * from "./exif";
 export * from "./zip";
 export * from "./adapter";
-export { Pipeline, imgkit, imgkitBatch } from "./pipeline";
+export { Pipeline, imgpilot, imgkitBatch } from "./pipeline";

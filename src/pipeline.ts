@@ -159,7 +159,7 @@ export class Pipeline {
 
 import { loadImage, getImageData, createCanvas } from "./adapter";
 
-export async function imgkit(
+export async function imgpilot(
   source: File | Blob | string | ArrayBuffer,
 ): Promise<Pipeline> {
   const img = await loadImage(source);
@@ -173,5 +173,5 @@ export async function imgkit(
 export async function imgkitBatch(
   sources: (File | Blob | string | ArrayBuffer)[],
 ): Promise<Pipeline[]> {
-  return Promise.all(sources.map((s) => imgkit(s)));
+  return Promise.all(sources.map((s) => imgpilot(s)));
 }

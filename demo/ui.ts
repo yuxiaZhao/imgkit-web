@@ -1,6 +1,6 @@
-import { crop, resize, rotate, flip, filter, watermark, metadata, compress, convert, parseExif } from 'imgkit';
-import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm, WatermarkOptions, ExifInfo, ImageMimeType } from 'imgkit';
-import { Position } from 'imgkit';
+import { crop, resize, rotate, flip, filter, watermark, metadata, compress, convert, parseExif } from 'imgpilot';
+import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm, WatermarkOptions, ExifInfo, ImageMimeType } from 'imgpilot';
+import { Position } from 'imgpilot';
 
 declare var JSZip: any;
 
@@ -154,6 +154,7 @@ export function createApp(root: HTMLElement) {
   };
 
   let _cropCleanup: (() => void) | null = null;
+  let _rootBound = false;
 
   function getSource(): SourceItem | null {
     return state.sources[state.currentIndex] ?? null;
@@ -204,7 +205,7 @@ export function createApp(root: HTMLElement) {
             <button class="btn-mini ${state.previewMode === 'compare' ? 'active' : ''}" data-mode="compare">对比预览</button>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
-            ${resUrl ? `<a class="btn" href="${resUrl}" download="imgkit-result.png">下载结果</a>` : ''}
+            ${resUrl ? `<a class="btn" href="${resUrl}" download="imgpilot-result.png">下载结果</a>` : ''}
             ${state.results.filter(r => r).length > 1 ? `<button class="btn" id="btnDownloadAll">下载全部 (ZIP)</button>` : ''}
           </div>
         </div>`;
@@ -237,7 +238,7 @@ export function createApp(root: HTMLElement) {
       ${state.busy ? `<div class="loading-overlay"><div class="loading-spinner"></div><p class="loading-text">${state.loadingText || '处理中…'}</p></div>` : ''}
       <div class="container">
         <header>
-          <h1>imgkit</h1>
+          <h1>imgpilot</h1>
           <p>纯前端图片处理工具库 · 裁剪 / 缩放 / 旋转翻转 / 滤镜 / 水印 / 输出</p>
         </header>
         <div class="layout">
@@ -369,7 +370,7 @@ export function createApp(root: HTMLElement) {
         <div class="controls">
           <div class="control full"><label class="enable-step"><input type="checkbox" data-op="watermark" ${state.enabledOps.has('watermark') ? 'checked' : ''} /> 启用此步骤</label></div>
           <div${state.enabledOps.has('watermark') ? '' : ' class="disabled"'} data-op-group="watermark">
-          <div class="control"><label>水印文字</label><input type="text" value="${state.watermarkText}" data-k="watermarkText" placeholder="例如: © imgkit" /></div>
+          <div class="control"><label>水印文字</label><input type="text" value="${state.watermarkText}" data-k="watermarkText" placeholder="例如: © imgpilot" /></div>
           <div class="control"><label>平铺模式</label><input type="checkbox" data-k="watermarkTile" ${state.watermarkTile ? 'checked' : ''} /></div>
           <div class="control"><label>位置</label>
             <select data-k="watermarkPos">
@@ -660,7 +661,7 @@ export function createApp(root: HTMLElement) {
     const url = URL.createObjectURL(zipBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `imgkit-results-${state.results.length}p.zip`;
+    a.download = `imgpilot-results-${state.results.length}p.zip`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -673,6 +674,10 @@ export function createApp(root: HTMLElement) {
   function openImageViewer(startIdx: number) {
     const total = state.sources.length;
     if (total === 0) return;
+
+    // 关闭已有灯箱，防止 bind() 重复事件监听导致多层叠加
+    const existing = document.querySelector('.img-viewer');
+    if (existing) existing.remove();
 
     let idx = startIdx;
     let zoom = 1;
@@ -804,7 +809,11 @@ export function createApp(root: HTMLElement) {
     window.addEventListener('keydown', onKey);
 
     // 关闭
-    function close() {
+    let _closed = false;
+    function close(e?: Event) {
+      if (_closed) return;
+      _closed = true;
+      if (e) e.stopPropagation();
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
@@ -1054,6 +1063,8 @@ export function createApp(root: HTMLElement) {
     });
 
     // 输出按钮 + 翻转按钮 + 缩略图 + 启用步骤（事件委托）
+    if (!_rootBound) {
+      _rootBound = true;
     root.addEventListener('click', async (e) => {
       const target = e.target as HTMLElement;
       // 点击预览图片 → 打开全屏灯箱
@@ -1169,6 +1180,7 @@ export function createApp(root: HTMLElement) {
         renderTabContent();
       }
     });
+    }
   }
 
   async function handleFiles(files: FileList): Promise<void> {
