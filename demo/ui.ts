@@ -1512,7 +1512,7 @@ export function createApp(root: HTMLElement) {
     render();
   }
 
-  function run() {
+  async function run() {
     if (state.sources.length === 0) return;
 
     // ── 前置校验 ──
@@ -1593,7 +1593,15 @@ export function createApp(root: HTMLElement) {
 
     state.pipeline = pipe;
 
+    // ── 全局 loading ──
+    const totalCount = state.sources.filter(s => s).length;
+    state.busy = true;
+    state.loadingText = `正在处理 1/${totalCount} 张图片…`;
+    render();
+    await new Promise(r => requestAnimationFrame(r));
+
     // ── 批量处理所有图片 ──
+    let processed = 0;
     for (let idx = 0; idx < state.sources.length; idx++) {
       const src = state.sources[idx];
       if (!src) continue;
@@ -1617,7 +1625,15 @@ export function createApp(root: HTMLElement) {
         url,
         meta: `处理步骤：${steps.join(' → ')} · 结果尺寸：${w}×${h}px · ${kb}KB · 平均亮度：${meta.averageBrightness.toFixed(1)}${meta.hasAlpha ? ' · 含透明通道' : ''}`,
       };
+
+      processed++;
+      if (processed < totalCount) {
+        state.loadingText = `正在处理 ${processed + 1}/${totalCount} 张图片…`;
+        render();
+        await new Promise(r => requestAnimationFrame(r));
+      }
     }
+    state.busy = false;
     render();
   }
 

@@ -24,8 +24,10 @@
   "scripts": {
     "dev": "tsup --watch",
     "build": "tsup",
-    "start": "npx serve demo -l 3000",
-    "preview": "npx serve demo -l 8080",
+    "dev:demo": "vite --port 3000",
+    "build:demo": "vite build",
+    "start": "vite --port 3000",
+    "preview": "vite preview --port 8080",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
