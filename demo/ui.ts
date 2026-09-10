@@ -372,8 +372,8 @@ export function createApp(root: HTMLElement) {
           <div${state.enabledOps.has('watermark') ? '' : ' class="disabled"'} data-op-group="watermark">
           <div class="control"><label>水印文字</label><input type="text" value="${state.watermarkText}" data-k="watermarkText" placeholder="例如: © imgpilot" /></div>
           <div class="control"><label>平铺模式</label><input type="checkbox" data-k="watermarkTile" ${state.watermarkTile ? 'checked' : ''} /></div>
-          <div class="control"><label>位置</label>
-            <select data-k="watermarkPos">
+          <div class="control"><label>位置${state.watermarkTile ? ' <span style="color:#94a3b8;font-weight:400">(平铺模式已禁用)</span>' : ''}</label>
+            <select data-k="watermarkPos"${state.watermarkTile ? ' disabled' : ''}>
               ${Object.values(Position).map((p) => `<option value="${p}" ${state.watermarkPos === p ? 'selected' : ''}>${p}</option>`).join('')}
             </select>
           </div>
@@ -1524,8 +1524,9 @@ export function createApp(root: HTMLElement) {
 
     if (state.enabledOps.has('crop')) {
       const anyCropped = state.cropRegions.some((r) => r && r.w > 0 && r.h > 0);
-      if (!anyCropped) {
-        state.runError = '裁剪已启用，但未框选裁剪区域。请在裁剪 Tab 中拖拽框选或输入坐标';
+      const hasRatio = !!state.cropRatio;
+      if (!anyCropped && !hasRatio) {
+        state.runError = '裁剪已启用，但未设置裁剪区域。请拖拽框选或设置宽高比';
         render();
         return;
       }
