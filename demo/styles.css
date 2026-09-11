@@ -76,7 +76,7 @@ body {
   background: var(--color-text-muted);
 }
 
-/*  Layout */
+/* Layout */
 
 .container {
   max-width: 1200px;
@@ -131,8 +131,7 @@ header p {
   }
 }
 
-/* Panel / Card*/
-
+/*Panel / Card */
 .panel {
   background: var(--color-surface);
   border-radius: var(--radius-lg);
@@ -157,7 +156,6 @@ header p {
   letter-spacing: -0.01em;
 }
 
-/* Drop Zone */
 
 .drop-zone {
   border: 2px dashed var(--color-border);
@@ -201,7 +199,6 @@ header p {
   z-index: 1;
 }
 
-/* Buttons */
 
 .btn {
   display: inline-flex;
@@ -289,7 +286,6 @@ header p {
   outline-offset: 1px;
 }
 
-/*  Controls */
 
 .controls {
   margin: var(--space-md) 0;
@@ -539,8 +535,6 @@ header p {
   box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 
-/* Tabs */
-
 .tabs {
   display: flex;
   gap: 2px;
@@ -632,7 +626,6 @@ header p {
   grid-column: 1 / -1;
 }
 
-/* Preview */
 
 .preview {
   margin-top: 12px;
@@ -751,8 +744,6 @@ header p {
   object-fit: contain;
 }
 
-/* Preview Toolbar */
-
 .preview-toolbar {
   display: flex;
   justify-content: space-between;
@@ -767,7 +758,6 @@ header p {
   gap: var(--space-xs);
 }
 
-/* Compare */
 
 .compare {
   position: relative;
@@ -851,7 +841,6 @@ header p {
   right: 12px;
 }
 
-/* Meta & Info */
 
 .meta {
   font-size: 12px;
@@ -909,8 +898,6 @@ header p {
   cursor: not-allowed;
 }
 
-/* Loading Overlay */
-
 .loading-overlay {
   position: fixed;
   inset: 0;
@@ -944,7 +931,6 @@ header p {
   font-weight: 500;
 }
 
-/* Rotate action buttons */
 
 .rotate-actions {
   display: flex;
@@ -964,8 +950,6 @@ header p {
   margin-top: 8px;
 }
 
-/* Crop specific */
-
 .crop-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -980,7 +964,7 @@ header p {
   grid-column: span 2;
 }
 
-/* ── 可视化框选 ── */
+/* 可视化框选 */
 .crop-visual {
   margin-top: 18px;
 }
@@ -1093,7 +1077,7 @@ header p {
   color: var(--color-primary);
 }
 
-/* ── 全屏框选灯箱 ── */
+/* 全屏框选灯箱 */
 .crop-lightbox {
   position: fixed;
   inset: 0;
@@ -1220,7 +1204,7 @@ header p {
   line-height: 1.5;
 }
 
-/* Responsive  */
+/* Responsive */
 
 @media (max-width: 640px) {
   .tabs {
