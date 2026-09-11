@@ -1,5 +1,5 @@
 import type { FlipAxis, ImageDataLike } from "./types";
-import { createImageData, clamp, degToRad } from "./utils";
+import { createImageData, degToRad, bilinearSample } from "./utils";
 
 export function flip(src: ImageDataLike, axis: FlipAxis): ImageDataLike {
   const { width: w, height: h, data } = src;
@@ -109,14 +109,7 @@ function rotateArbitrary(
       const i11 = (y1 * w + x1) * 4;
 
       const di = (dy * nw + dx) * 4;
-      for (let c = 0; c < 4; c++) {
-        const v =
-          data[i00 + c] * (1 - fx) * (1 - fy) +
-          data[i01 + c] * fx * (1 - fy) +
-          data[i10 + c] * (1 - fx) * fy +
-          data[i11 + c] * fx * fy;
-        d[di + c] = clamp(Math.round(v), 0, 255);
-      }
+      bilinearSample(data, i00, i01, i10, i11, fx, fy, d, di);
     }
   }
   return dst;

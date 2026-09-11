@@ -92,10 +92,10 @@ export function applyWatermarkImage(
   options: WatermarkOptions,
 ): ImageDataLike {
   const result = cloneImageData(dst);
-  const opacity = options.opacity ?? 1;
-  const margin = options.margin ?? 16;
-  const scale = options.scale ?? 1;
-  const position = options.position ?? Position.BottomRight;
+  const opacity = options.opacity || 1;
+  const margin = options.margin || 16;
+  const scale = options.scale || 1;
+  const position = options.position || Position.BottomRight;
 
   let wm = watermark;
   if (scale !== 1) {
@@ -146,9 +146,9 @@ export function applyTextWatermark(
   options: WatermarkOptions,
   renderer: TextRenderer,
 ): ImageDataLike {
-  const font = options.font ?? "24px sans-serif";
-  const color = options.color ?? "rgba(255,255,255,0.8)";
-  const rotate = options.rotate ?? 0;
+  const font = options.font || "24px sans-serif";
+  const color = options.color || "rgba(255,255,255,0.8)";
+  const rotate = options.rotate || 0;
   const textImage = renderer.renderText(text, { font, color, rotate });
   return applyWatermarkImage(dst, textImage, options);
 }

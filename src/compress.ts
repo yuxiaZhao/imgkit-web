@@ -1,36 +1,15 @@
 import type { ImageDataLike, ImageMimeType, CompressOptions, CompressResult } from "./types";
-
-const defaultCanvas = () => {
-  if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(1, 1);
-  return document.createElement("canvas");
-};
+import { createCanvas, putImageData, toBlob } from "./adapter";
 
 async function encode(
   data: ImageDataLike,
   mime: ImageMimeType,
   quality: number,
 ): Promise<{ blob: Blob; mimeType: string }> {
-  const canvas = defaultCanvas();
-  canvas.width = data.width;
-  canvas.height = data.height;
-  const ctx = canvas.getContext("2d")!;
-  ctx.putImageData(new ImageData(new Uint8ClampedArray(data.data), data.width, data.height), 0, 0);
-
-  if (canvas instanceof OffscreenCanvas) {
-    const blob = await canvas.convertToBlob({ type: mime, quality });
-    return { blob, mimeType: mime };
-  }
-  // fallback to toBlob via canvas
-  return new Promise((resolve, reject) => {
-    (canvas as HTMLCanvasElement).toBlob(
-      (blob) => {
-        if (!blob) return reject(new Error("toBlob 返回空"));
-        resolve({ blob, mimeType: mime });
-      },
-      mime,
-      quality,
-    );
-  });
+  const canvas = createCanvas(data.width, data.height);
+  putImageData(canvas, data);
+  const blob = await toBlob(canvas, mime, quality);
+  return { blob, mimeType: mime };
 }
 
 // 二分搜索：在 [low, high] 内找最大 quality 使体积 ≤ maxSize

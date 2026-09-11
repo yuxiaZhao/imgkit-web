@@ -1,4 +1,5 @@
 import type { ImageDataLike, ImageMimeType } from "./types";
+import { createCanvas, putImageData, toBlob } from "./adapter";
 
 export function normalizeMime(raw: string): ImageMimeType {
   const m = raw.trim().toLowerCase();
@@ -14,21 +15,7 @@ export async function convert(
   quality = 0.92,
 ): Promise<Blob> {
   const mime = normalizeMime(mimeType);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = data.width;
-  canvas.height = data.height;
-  const ctx = canvas.getContext("2d")!;
-  ctx.putImageData(new ImageData(new Uint8ClampedArray(data.data), data.width, data.height), 0, 0);
-
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return reject(new Error("格式转换失败"));
-        resolve(blob);
-      },
-      mime,
-      quality,
-    );
-  });
+  const canvas = createCanvas(data.width, data.height);
+  putImageData(canvas, data);
+  return toBlob(canvas, mime, quality);
 }

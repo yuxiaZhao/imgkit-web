@@ -25,12 +25,12 @@ import type {
 } from "./types";
 
 export class Pipeline {
-  private _image: ImageDataLike;
-  private _encoder: Encoder;
-  private _textRenderer: TextRenderer;
-  private _historyLimit: number;
-  private _history: ImageDataLike[];
-  private _historyIndex: number;
+  private image: ImageDataLike;
+  private encoder: Encoder;
+  private textRenderer: TextRenderer;
+  private historyLimit: number;
+  private history: ImageDataLike[];
+  private historyIndex: number;
 
   constructor(
     image: ImageDataLike,
@@ -38,124 +38,124 @@ export class Pipeline {
     textRenderer?: TextRenderer,
     historyLimit = 20,
   ) {
-    this._image = cloneImageData(image);
-    this._encoder = encoder ?? browserEncoder;
-    this._textRenderer = textRenderer ?? browserTextRenderer;
-    this._historyLimit = Math.max(1, historyLimit);
-    this._history = [cloneImageData(image)];
-    this._historyIndex = 0;
+    this.image = cloneImageData(image);
+    this.encoder = encoder ?? browserEncoder;
+    this.textRenderer = textRenderer ?? browserTextRenderer;
+    this.historyLimit = Math.max(1, historyLimit);
+    this.history = [cloneImageData(image)];
+    this.historyIndex = 0;
   }
 
-  private _snapshot(): void {
+  private snapshot(): void {
     // 截断 redo 尾部
-    this._history = this._history.slice(0, this._historyIndex + 1);
+    this.history = this.history.slice(0, this.historyIndex + 1);
     // 压入当前快照
-    this._history.push(cloneImageData(this._image));
+    this.history.push(cloneImageData(this.image));
     // 超出上限则丢弃最早
-    if (this._history.length > this._historyLimit) {
-      this._history.shift();
+    if (this.history.length > this.historyLimit) {
+      this.history.shift();
     } else {
-      this._historyIndex++;
+      this.historyIndex++;
     }
   }
 
-  // ─── 链式操作 ───
+  // 链式操作
 
   crop(opts: CropOptions): this {
-    this._snapshot();
-    this._image = crop(this._image, opts);
+    this.snapshot();
+    this.image = crop(this.image, opts);
     return this;
   }
 
   resize(opts: ResizeOptions): this {
-    this._snapshot();
-    this._image = resize(this._image, opts);
+    this.snapshot();
+    this.image = resize(this.image, opts);
     return this;
   }
 
   rotate(degrees: number): this {
-    this._snapshot();
-    this._image = rotate(this._image, degrees);
+    this.snapshot();
+    this.image = rotate(this.image, degrees);
     return this;
   }
 
   flip(axis: FlipAxis): this {
-    this._snapshot();
-    this._image = flip(this._image, axis);
+    this.snapshot();
+    this.image = flip(this.image, axis);
     return this;
   }
 
   filter(opts: FilterOptions): this {
-    this._snapshot();
-    this._image = filter(this._image, opts);
+    this.snapshot();
+    this.image = filter(this.image, opts);
     return this;
   }
 
   watermark(opts: WatermarkOptions): this {
-    this._snapshot();
-    this._image = watermark(this._image, opts, this._textRenderer);
+    this.snapshot();
+    this.image = watermark(this.image, opts, this.textRenderer);
     return this;
   }
 
-  // ─── 输出操作 ───
+  // 输出操作
 
   async compress(opts: CompressOptions): Promise<CompressResult> {
-    return compress(this._image, opts);
+    return compress(this.image, opts);
   }
 
   async convert(
     mimeType: ImageMimeType,
     quality?: number,
   ): Promise<Blob> {
-    return convert(this._image, mimeType, quality);
+    return convert(this.image, mimeType, quality);
   }
 
   async toBlob(
     mime: ImageMimeType = "image/png",
     quality?: number,
   ): Promise<Blob> {
-    return this._encoder.encode(this._image, mime, quality);
+    return this.encoder.encode(this.image, mime, quality);
   }
 
   toImageData(): ImageDataLike {
-    return cloneImageData(this._image);
+    return cloneImageData(this.image);
   }
 
   metadata(): ImageMetadata {
-    return metadata(this._image);
+    return metadata(this.image);
   }
 
-  // ─── 撤销/重做 ───
+  // 撤销/重做
 
   get canUndo(): boolean {
-    return this._historyIndex > 0;
+    return this.historyIndex > 0;
   }
 
   get canRedo(): boolean {
-    return this._historyIndex < this._history.length - 1;
+    return this.historyIndex < this.history.length - 1;
   }
 
   undo(): this {
     if (!this.canUndo) return this;
-    this._historyIndex--;
-    this._image = cloneImageData(this._history[this._historyIndex]);
+    this.historyIndex--;
+    this.image = cloneImageData(this.history[this.historyIndex]);
     return this;
   }
 
   redo(): this {
     if (!this.canRedo) return this;
-    this._historyIndex++;
-    this._image = cloneImageData(this._history[this._historyIndex]);
+    this.historyIndex++;
+    this.image = cloneImageData(this.history[this.historyIndex]);
     return this;
   }
 
   _setDefaults(encoder: Encoder, textRenderer: TextRenderer): void {
-    this._encoder = encoder;
-    this._textRenderer = textRenderer;
+    this.encoder = encoder;
+    this.textRenderer = textRenderer;
   }
 }
 
-// ─── 工厂函数 ───
+// 工厂函数
 
 import { loadImage, getImageData, createCanvas } from "./adapter";
 

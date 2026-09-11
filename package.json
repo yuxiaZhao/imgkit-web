@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yuxiaZhao/imgkit.git"
+    "url": "https://github.com/yuxiaZhao/imgpilot.git"
   },
   "files": [
     "dist"
@@ -27,6 +27,9 @@
     "dev:demo": "vite --port 3000",
     "build:demo": "vite build",
     "start": "vite --port 3000",
+    "dev:docs": "vitepress dev docs",
+    "build:docs": "vitepress build docs",
+    "preview:docs": "vitepress preview docs",
     "preview": "vite preview --port 8080",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -45,6 +48,7 @@
     "watermark",
     "filter"
   ],
+  "private": false,
   "license": "MIT",
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.0.0",
@@ -56,6 +60,7 @@
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vite": "^5.4.21",
+    "vitepress": "^1.6.4",
     "vitest": "^1.6.0"
   }
 }

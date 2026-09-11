@@ -78,6 +78,22 @@ export function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+export function bilinearSample(
+  data: Uint8ClampedArray,
+  i00: number, i01: number, i10: number, i11: number,
+  fx: number, fy: number,
+  dst: Uint8ClampedArray, di: number,
+): void {
+  for (let c = 0; c < 4; c++) {
+    const v =
+      data[i00 + c] * (1 - fx) * (1 - fy) +
+      data[i01 + c] * fx * (1 - fy) +
+      data[i10 + c] * (1 - fx) * fy +
+      data[i11 + c] * fx * fy;
+    dst[di + c] = clamp(Math.round(v), 0, 255);
+  }
+}
+
 export function degToRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }

@@ -1,5 +1,5 @@
 import type { ImageDataLike, ResizeOptions, FitMode } from "./types";
-import { createImageData, clamp } from "./utils";
+import { createImageData, bilinearSample } from "./utils";
 
 export function computeTargetSize(
   srcW: number,
@@ -103,14 +103,7 @@ function bilinear(
       const i11 = (sy1 * srcW + sx1) * 4;
 
       const di = (dy * dstW + dx) * 4;
-      for (let c = 0; c < 4; c++) {
-        const v =
-          srcData[i00 + c] * (1 - fx) * (1 - fy) +
-          srcData[i01 + c] * fx * (1 - fy) +
-          srcData[i10 + c] * (1 - fx) * fy +
-          srcData[i11 + c] * fx * fy;
-        dstData[di + c] = clamp(Math.round(v), 0, 255);
-      }
+      bilinearSample(srcData, i00, i01, i10, i11, fx, fy, dstData, di);
     }
   }
   return dst;

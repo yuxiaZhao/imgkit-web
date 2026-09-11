@@ -1,6 +1,6 @@
 import type { ImageDataLike, ImageMimeType, Encoder, TextRenderer } from "./types";
 
-// ─── 图片加载 ───
+// ---- 图片加载----
 
 export async function loadImage(
   source: File | Blob | string | ArrayBuffer,
@@ -20,7 +20,7 @@ export async function loadImage(
   });
 }
 
-// ─── Canvas 创建 ───
+// ----Canvas 创建 ----
 
 export function createCanvas(
   w: number,
@@ -35,24 +35,33 @@ export function createCanvas(
   return c;
 }
 
-// ─── 像素数据提取 ───
+// ---- 像素数据提取 ----
 
 export function getImageData(
   source: HTMLImageElement | HTMLCanvasElement | OffscreenCanvas,
 ): ImageDataLike {
   if (source instanceof HTMLImageElement) {
     const c = createCanvas(source.width, source.height);
-    const ctx = (c as HTMLCanvasElement | OffscreenCanvas).getContext("2d")!;
-    ctx.drawImage(source, 0, 0);
+    const ctx = (c as HTMLCanvasElement | OffscreenCanvas).getContext("2d");
+    if(ctx){
+      ctx.drawImage(source, 0, 0);
+      const imgData = ctx.getImageData(0, 0, source.width, source.height);
+      return { data: imgData.data, width: source.width, height: source.height };
+    }else{
+      throw new Error("Canvas 上下文获取失败");
+    }
+    
+  }
+  const ctx = source.getContext("2d");
+  if(ctx){
     const imgData = ctx.getImageData(0, 0, source.width, source.height);
     return { data: imgData.data, width: source.width, height: source.height };
+  }else{
+    throw new Error("Canvas 上下文获取失败");
   }
-  const ctx = source.getContext("2d")!;
-  const imgData = ctx.getImageData(0, 0, source.width, source.height);
-  return { data: imgData.data, width: source.width, height: source.height };
 }
 
-// ─── 像素数据写入 ───
+// ---- 像素数据写入 ----
 
 export function putImageData(
   canvas: HTMLCanvasElement | OffscreenCanvas,
@@ -60,15 +69,19 @@ export function putImageData(
 ): void {
   canvas.width = data.width;
   canvas.height = data.height;
-  const ctx = canvas.getContext("2d")!;
-  ctx.putImageData(
-    new ImageData(new Uint8ClampedArray(data.data), data.width, data.height),
-    0,
-    0,
-  );
+  const ctx = canvas.getContext("2d");
+  if(ctx){
+    ctx.putImageData(
+      new ImageData(new Uint8ClampedArray(data.data), data.width, data.height),
+      0,
+      0,
+    );
+  }else{
+    throw new Error("Canvas 上下文获取失败");
+  }
 }
 
-// ─── 编码输出 ───
+// 编码输出 
 
 export function toBlob(
   canvas: HTMLCanvasElement | OffscreenCanvas,
@@ -101,7 +114,7 @@ export function toDataURL(
   return canvas.toDataURL(mime, quality);
 }
 
-// ─── 浏览器编码器 ───
+//  浏览器编码器 
 
 export const browserEncoder: Encoder = {
   async encode(
@@ -115,7 +128,7 @@ export const browserEncoder: Encoder = {
   },
 };
 
-// ─── 文本渲染 ───
+// 文本渲染 
 
 export function renderText(
   text: string,
@@ -123,7 +136,10 @@ export function renderText(
 ): ImageDataLike {
   const fontSize = parseInt(options.font, 10) || 32;
   const c = document.createElement("canvas");
-  const ctx = c.getContext("2d")!;
+  const ctx = c.getContext("2d");
+  if(!ctx){
+    throw new Error("Canvas 上下文获取失败");
+  }
   ctx.font = options.font;
 
   const metrics = ctx.measureText(text);
@@ -154,7 +170,7 @@ export function renderText(
   return { data: imgData.data, width: c.width, height: c.height };
 }
 
-// ─── 默认文本渲染器 ───
+//默认文本渲染器 
 
 export const browserTextRenderer: TextRenderer = {
   renderText,

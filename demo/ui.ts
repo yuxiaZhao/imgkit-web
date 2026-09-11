@@ -36,14 +36,14 @@ class Pipeline {
   undo(): boolean {
     if (this.undoStack.length === 0) return false;
     this.redoStack.push([...this.steps]);
-    this.steps = this.undoStack.pop()!;
+    this.steps = this.undoStack.pop() || [];
     return true;
   }
 
   redo(): boolean {
     if (this.redoStack.length === 0) return false;
     this.undoStack.push([...this.steps]);
-    this.steps = this.redoStack.pop()!;
+    this.steps = this.redoStack.pop() || [];
     return true;
   }
 
@@ -153,8 +153,8 @@ export function createApp(root: HTMLElement) {
     exifData: null,
   };
 
-  let _cropCleanup: (() => void) | null = null;
-  let _rootBound = false;
+  let cropCleanup: (() => void) | null = null;
+  let rootBound = false;
 
   function getSource(): SourceItem | null {
     return state.sources[state.currentIndex] ?? null;
@@ -172,11 +172,11 @@ export function createApp(root: HTMLElement) {
   function render() {
     const hasSource = state.sources.some((s) => s !== null);
     const src = getSource();
-    const srcUrl = src?.url ?? '';
+    const srcUrl = src?.url || '';
     const res = getResult();
-    const resUrl = res?.url ?? '';
-    const resMeta = res?.meta ?? '';
-    const fileName = src?.file?.name ?? '';
+    const resUrl = res?.url || '';
+    const resMeta = res?.meta || '';
+    const fileName = src?.file?.name || '';
 
     const sourcePreviewHtml = hasSource
       ? `<div class="thumb-strip">
@@ -431,6 +431,21 @@ export function createApp(root: HTMLElement) {
     }
   }
 
+  function getImageDisplayRect(img: HTMLImageElement) {
+    const r = img.getBoundingClientRect();
+    const natW = img.naturalWidth, natH = img.naturalHeight;
+    const cW = r.width, cH = r.height;
+    const natRatio = natW / natH;
+    const cRatio = cW / cH;
+    let dw: number, dh: number, ox: number, oy: number;
+    if (natRatio > cRatio) {
+      dw = cW; dh = cW / natRatio; ox = 0; oy = (cH - dh) / 2;
+    } else {
+      dh = cH; dw = cH * natRatio; ox = (cW - dw) / 2; oy = 0;
+    }
+    return { left: r.left + ox, top: r.top + oy, width: dw, height: dh, scaleX: natW / dw, scaleY: natH / dh };
+  }
+
   function initCropPreview() {
     const preview = document.getElementById('cropPreview');
     const img = document.getElementById('cropImg') as HTMLImageElement | null;
@@ -438,7 +453,7 @@ export function createApp(root: HTMLElement) {
     if (!preview || !img || !rect) return;
 
     // 清理上次的 window 监听
-    if (_cropCleanup) { _cropCleanup(); _cropCleanup = null; }
+    if (cropCleanup) { cropCleanup(); cropCleanup = null; }
 
     function setupExistingRect() {
       const c = cr();
@@ -457,18 +472,7 @@ export function createApp(root: HTMLElement) {
     let sx = 0, sy = 0;
 
     function imgDisplayRect() {
-      const r = img!.getBoundingClientRect();
-      const natW = img!.naturalWidth, natH = img!.naturalHeight;
-      const cW = r.width, cH = r.height;
-      const natRatio = natW / natH;
-      const cRatio = cW / cH;
-      let dw: number, dh: number, ox: number, oy: number;
-      if (natRatio > cRatio) {
-        dw = cW; dh = cW / natRatio; ox = 0; oy = (cH - dh) / 2;
-      } else {
-        dh = cH; dw = cH * natRatio; ox = (cW - dw) / 2; oy = 0;
-      }
-      return { left: r.left + ox, top: r.top + oy, width: dw, height: dh, scaleX: natW / dw, scaleY: natH / dh };
+      return getImageDisplayRect(img!);
     }
 
     function onDown(e: MouseEvent) {
@@ -497,7 +501,7 @@ export function createApp(root: HTMLElement) {
       rect.style.height = rh + 'px';
     }
 
-    function onUp(_e: MouseEvent) {
+    function onUp(e: MouseEvent) {
       if (!drawing) return;
       drawing = false;
       const d = imgDisplayRect();
@@ -524,31 +528,21 @@ export function createApp(root: HTMLElement) {
     preview.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    _cropCleanup = () => {
+    cropCleanup = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
   }
 
   function drawCropRect(rect: HTMLElement, img: HTMLImageElement) {
-    const r = img.getBoundingClientRect();
-    const natW = img.naturalWidth, natH = img.naturalHeight;
-    const cW = r.width, cH = r.height;
-    const natRatio = natW / natH;
-    const cRatio = cW / cH;
-    let dw: number, dh: number, ox: number, oy: number;
-    if (natRatio > cRatio) {
-      dw = cW; dh = cW / natRatio; ox = 0; oy = (cH - dh) / 2;
-    } else {
-      dh = cH; dw = cH * natRatio; ox = (cW - dw) / 2; oy = 0;
-    }
-    const scaleX = dw / natW, scaleY = dh / natH;
+    const d = getImageDisplayRect(img);
+    const sx = 1 / d.scaleX, sy = 1 / d.scaleY;
     const c = cr();
     rect.style.display = 'block';
-    rect.style.left = (c.x * scaleX) + 'px';
-    rect.style.top = (c.y * scaleY) + 'px';
-    rect.style.width = (c.w * scaleX) + 'px';
-    rect.style.height = (c.h * scaleY) + 'px';
+    rect.style.left = (c.x * sx) + 'px';
+    rect.style.top = (c.y * sy) + 'px';
+    rect.style.width = (c.w * sx) + 'px';
+    rect.style.height = (c.h * sy) + 'px';
   }
 
   function refreshCropOverlay() {
@@ -636,14 +630,14 @@ export function createApp(root: HTMLElement) {
     syncCropInputs();
   }
 
-  let _downloading = false;
+  let downloading = false;
 
   async function downloadAllAsZip() {
-    if (_downloading) return;
+    if (downloading) return;
     const results = state.results.filter(r => r);
     if (results.length === 0) return;
 
-    _downloading = true;
+    downloading = true;
     const btn = document.getElementById('btnDownloadAll');
     if (btn) btn.textContent = '打包中...';
 
@@ -667,7 +661,7 @@ export function createApp(root: HTMLElement) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    _downloading = false;
+    downloading = false;
     if (btn) btn.textContent = '下载全部 (ZIP)';
   }
 
@@ -809,10 +803,10 @@ export function createApp(root: HTMLElement) {
     window.addEventListener('keydown', onKey);
 
     // 关闭
-    let _closed = false;
+    let closed = false;
     function close(e?: Event) {
-      if (_closed) return;
-      _closed = true;
+      if (closed) return;
+      closed = true;
       if (e) e.stopPropagation();
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('mousemove', onMove);
@@ -863,34 +857,13 @@ export function createApp(root: HTMLElement) {
     let tmpX = c.x, tmpY = c.y, tmpW = c.w, tmpH = c.h;
 
     function stageImgRect() {
-      const r = img.getBoundingClientRect();
-      const natW = img.naturalWidth, natH = img.naturalHeight;
-      const cW = r.width, cH = r.height;
-      const natRatio = natW / natH;
-      const cRatio = cW / cH;
-      let dw: number, dh: number, ox: number, oy: number;
-      if (natRatio > cRatio) {
-        dw = cW; dh = cW / natRatio; ox = 0; oy = (cH - dh) / 2;
-      } else {
-        dh = cH; dw = cH * natRatio; ox = (cW - dw) / 2; oy = 0;
-      }
-      return { left: r.left + ox, top: r.top + oy, width: dw, height: dh, scaleX: natW / dw, scaleY: natH / dh };
+      return getImageDisplayRect(img);
     }
 
     function drawLbRect() {
       if (tmpW <= 0 || tmpH <= 0) { rect.style.display = 'none'; return; }
-      const r = img.getBoundingClientRect();
-      const natW = img.naturalWidth, natH = img.naturalHeight;
-      const cW = r.width, cH = r.height;
-      const natRatio = natW / natH;
-      const cRatio = cW / cH;
-      let dw: number, dh: number, ox: number, oy: number;
-      if (natRatio > cRatio) {
-        dw = cW; dh = cW / natRatio; ox = 0; oy = (cH - dh) / 2;
-      } else {
-        dh = cH; dw = cH * natRatio; ox = (cW - dw) / 2; oy = 0;
-      }
-      const sx = dw / natW, sy = dh / natH;
+      const d = getImageDisplayRect(img);
+      const sx = 1 / d.scaleX, sy = 1 / d.scaleY;
       rect.style.display = 'block';
       rect.style.left = (tmpX * sx) + 'px';
       rect.style.top = (tmpY * sy) + 'px';
@@ -958,7 +931,7 @@ export function createApp(root: HTMLElement) {
       rect.style.height = rh + 'px';
     }
 
-    function onLbUp(_e: MouseEvent) {
+    function onLbUp(e: MouseEvent) {
       if (!drawing) return;
       drawing = false;
       const d = stageImgRect();
@@ -1063,8 +1036,8 @@ export function createApp(root: HTMLElement) {
     });
 
     // 输出按钮 + 翻转按钮 + 缩略图 + 启用步骤（事件委托）
-    if (!_rootBound) {
-      _rootBound = true;
+    if (!rootBound) {
+      rootBound = true;
     root.addEventListener('click', async (e) => {
       const target = e.target as HTMLElement;
       // 点击预览图片 → 打开全屏灯箱
