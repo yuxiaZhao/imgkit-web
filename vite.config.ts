@@ -10,7 +10,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      imgpilot: new URL('./src/index.ts', import.meta.url).pathname,
+      "imgkit-web": new URL('./src/index.ts', import.meta.url).pathname,
     },
   },
   server: {

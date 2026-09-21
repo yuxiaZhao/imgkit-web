@@ -1,6 +1,6 @@
-import { crop, resize, rotate, flip, filter, watermark, metadata, compress, convert, parseExif } from 'imgpilot';
-import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm, WatermarkOptions, ExifInfo, ImageMimeType } from 'imgpilot';
-import { Position } from 'imgpilot';
+import { crop, resize, rotate, flip, filter, watermark, metadata, compress, convert, parseExif } from 'imgkit-web';
+import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm, WatermarkOptions, ExifInfo, ImageMimeType } from 'imgkit-web';
+import { Position } from 'imgkit-web';
 
 declare var JSZip: any;
 
@@ -205,7 +205,7 @@ export function createApp(root: HTMLElement) {
             <button class="btn-mini ${state.previewMode === 'compare' ? 'active' : ''}" data-mode="compare">对比预览</button>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
-            ${resUrl ? `<a class="btn" href="${resUrl}" download="imgpilot-result.png">下载结果</a>` : ''}
+            ${resUrl ? `<a class="btn" href="${resUrl}" download="imgkit-web-result.png">下载结果</a>` : ''}
             ${state.results.filter(r => r).length > 1 ? `<button class="btn" id="btnDownloadAll">下载全部 (ZIP)</button>` : ''}
           </div>
         </div>`;
@@ -238,7 +238,7 @@ export function createApp(root: HTMLElement) {
       ${state.busy ? `<div class="loading-overlay"><div class="loading-spinner"></div><p class="loading-text">${state.loadingText || '处理中…'}</p></div>` : ''}
       <div class="container">
         <header>
-          <h1>imgpilot</h1>
+          <h1>imgkit-web</h1>
           <p>纯前端图片处理工具库 · 裁剪 / 缩放 / 旋转翻转 / 滤镜 / 水印 / 输出</p>
         </header>
         <div class="layout">
@@ -370,7 +370,7 @@ export function createApp(root: HTMLElement) {
         <div class="controls">
           <div class="control full"><label class="enable-step"><input type="checkbox" data-op="watermark" ${state.enabledOps.has('watermark') ? 'checked' : ''} /> 启用此步骤</label></div>
           <div${state.enabledOps.has('watermark') ? '' : ' class="disabled"'} data-op-group="watermark">
-          <div class="control"><label>水印文字</label><input type="text" value="${state.watermarkText}" data-k="watermarkText" placeholder="例如: © imgpilot" /></div>
+          <div class="control"><label>水印文字</label><input type="text" value="${state.watermarkText}" data-k="watermarkText" placeholder="例如: © imgkit-web" /></div>
           <div class="control"><label>平铺模式</label><input type="checkbox" data-k="watermarkTile" ${state.watermarkTile ? 'checked' : ''} /></div>
           <div class="control"><label>位置${state.watermarkTile ? ' <span style="color:#94a3b8;font-weight:400">(平铺模式已禁用)</span>' : ''}</label>
             <select data-k="watermarkPos"${state.watermarkTile ? ' disabled' : ''}>
@@ -655,7 +655,7 @@ export function createApp(root: HTMLElement) {
     const url = URL.createObjectURL(zipBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `imgpilot-results-${state.results.length}p.zip`;
+    a.download = `imgkit-web-results-${state.results.length}p.zip`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

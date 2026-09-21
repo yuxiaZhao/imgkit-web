@@ -1,11 +1,12 @@
 import { defineConfig } from 'vitepress';
 
 export default defineConfig({
-  title: 'imgpilot',
+  title: 'imgkit-web',
   description: '纯前端图片处理工具库',
   lang: 'zh-CN',
   lastUpdated: true,
   cleanUrls: true,
+  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }]],
   themeConfig: {
     nav: [
       { text: '指南', link: '/guide/' },
@@ -33,10 +34,10 @@ export default defineConfig({
         },
       ]
     },
-    socialLinks: [{ icon: 'github', link: 'https://github.com/yuxiaZhao/imgpilot' }],
+    socialLinks: [{ icon: 'github', link: 'https://github.com/yuxiaZhao/imgkit-web' }],
     footer: {
       message: '基于 MIT 协议发布',
-      copyright: 'Copyright © 2026 imgpilot contributors',
+      copyright: 'Copyright © 2026 imgkit-web contributors',
     },
     search: { provider: 'local' },
   },

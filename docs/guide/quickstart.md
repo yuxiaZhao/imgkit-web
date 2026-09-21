@@ -3,7 +3,7 @@
 ## 安装
 
 ```bash
-npm install imgpilot
+npm install imgkit-web
 ```
 
 ## 浏览器使用
@@ -11,7 +11,7 @@ npm install imgpilot
 ### 链式调用
 
 ```ts
-import { imgpilot, Position } from 'imgpilot';
+import { imgpilot, Position } from 'imgkit-web';
 
 const pipeline = await imgpilot(file);
 const result = await pipeline
@@ -26,8 +26,8 @@ console.log(result.size, result.quality);
 ### 函数式调用
 
 ```ts
-import { crop, resize, filter, metadata } from 'imgpilot';
-import { loadImage, getImageData, toDataURL } from 'imgpilot';
+import { crop, resize, filter, metadata } from 'imgkit-web';
+import { loadImage, getImageData, toDataURL } from 'imgkit-web';
 
 const img = await loadImage(file);
 const id = getImageData(img);
@@ -39,7 +39,7 @@ const url = toDataURL({ data: filtered.data, width: filtered.width, height: filt
 ### 批量处理
 
 ```ts
-import { imgkitBatch, Position } from 'imgpilot';
+import { imgkitBatch, Position } from 'imgkit-web';
 
 const pipelines = await imgkitBatch([fileA, fileB, fileC]);
 for (const p of pipelines) {
@@ -58,4 +58,4 @@ npm run dev:demo
 
 浏览器打开 `http://localhost:3000`，上传图片 → 设置参数 → 执行处理 → 预览下载。
 
-也可直接访问在线站点：[imgpilot.pages.dev](https://imgpilot.pages.dev/)
+也可直接访问在线站点：[imgkit-web.pages.dev](https://imgkit-web.pages.dev/)

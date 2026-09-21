@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: "imgpilot"
+  name: "imgkit-web"
   text: "纯前端图片处理工具库"
   tagline: 浏览器端零原生依赖 · 链式 API + 函数式 API · 10 大功能模块
   actions:
@@ -17,7 +17,7 @@ features:
   - title: 纯前端零依赖
     details: 核心算法基于 ImageData 实现，不依赖任何第三方图像库（sharp/jimp），浏览器端零原生依赖。
   - title: 双调用风格
-    details: 链式 API（imgpilot(src).resize().watermark().toBlob()）与函数式 API（crop/resize/filter 等独立函数），按场景选择。
+    details: 链式 API（imgkit-web(src).resize().watermark().toBlob()）与函数式 API（crop/resize/filter 等独立函数），按场景选择。
   - title: 10 大功能模块
     details: 压缩、水印、裁剪、缩放、旋转翻转、格式转换、滤镜、元信息、EXIF 解析、ZIP 打包。
   - title: TypeScript 严格模式

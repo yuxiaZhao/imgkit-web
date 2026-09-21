@@ -1,7 +1,7 @@
 {
-  "name": "imgpilot",
+  "name": "imgkit-web",
   "author": "zhaoyuxia<yuxia__zhao@163.com>",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "前端图片处理工具库",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -16,7 +16,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yuxiaZhao/imgpilot.git"
+    "url": "https://github.com/yuxiaZhao/imgkit-web.git"
   },
   "files": [
     "dist"

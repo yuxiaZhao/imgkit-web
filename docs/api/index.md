@@ -5,7 +5,7 @@
 ## 创建 Pipeline
 
 ```ts
-import { imgpilot, imgkitBatch } from 'imgpilot';
+import { imgpilot, imgkitBatch } from 'imgkit-web';
 
 // 单张图片
 const p = await imgpilot(file);        // File/Blob

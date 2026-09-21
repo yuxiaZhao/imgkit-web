@@ -9,7 +9,7 @@ import {
   compress, convert, metadata, parseExif, normalizeMime,
   createZip, crc32,
   imgkitBatch,
-} from 'imgpilot';
+} from 'imgkit-web';
 ```
 
 浏览器工具函数：
@@ -19,7 +19,7 @@ import {
   loadImage, getImageData, putImageData, createCanvas,
   toBlob, toDataURL, renderText,
   browserEncoder, browserTextRenderer,
-} from 'imgpilot';
+} from 'imgkit-web';
 ```
 
 ## crop
