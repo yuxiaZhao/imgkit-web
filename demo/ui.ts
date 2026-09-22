@@ -1432,7 +1432,7 @@ export function createApp(root: HTMLElement) {
       const prevMeta = state.results[state.currentIndex]?.meta || '';
       const stepPrefix = state.pipeline && !state.pipeline.isEmpty()
         ? `处理步骤：${state.pipeline.names().join(' → ')} · ` : '';
-      const outMeta = [`${state.outputFormat}`, `${(result.size / 1024).toFixed(1)}KB`];
+      const outMeta = [`${result.mimeType}`, `${(result.size / 1024).toFixed(1)}KB`];
       if (state.compressionMode === 'quality') {
         outMeta.push(`quality=${result.quality.toFixed(2)}`);
       }

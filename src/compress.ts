@@ -39,10 +39,9 @@ async function binarySearchQuality(
 
   if (best) return best;
 
-  // 最低质量仍超限 → 尝试无损格式降级
+  // 最低质量仍超限 → PNG 无损,quality 无法调节体积,降级为 WebP 二分搜索接近 maxSize
   if (mime === "image/png") {
-    const { blob } = await encode(data, "image/webp", 0.1);
-    return { blob, quality: 0.1, size: blob.size, mimeType: "image/webp" };
+    return binarySearchQuality(data, "image/webp", maxSize, 0.1, 1);
   }
 
   // 返回最低质量结果
