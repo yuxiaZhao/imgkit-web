@@ -1,13 +1,8 @@
 {
   "name": "imgkit-web",
-<<<<<<< HEAD
-  "author": "zhaoyuxia<yuxia__zhao@163.com>",
-  "version": "1.0.0",
-=======
   "author": "zhaoyuxia",
-  "version": "1.0.2",
->>>>>>> 8b524e4 (发布+优化)
-  "description": "前端图片处理工具库",
+  "version": "1.0.4",
+  "description": "纯前端图片处理工具库",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
