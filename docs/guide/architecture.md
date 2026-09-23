@@ -20,6 +20,7 @@ src/
 ├── metadata.ts    # 元信息提取
 ├── exif.ts        # EXIF 解析
 ├── zip.ts         # ZIP 打包 / CRC-32
+├── steganography.ts # 图片隐写（LSB 嵌入/提取）
 └── index.ts       # 统一入口
 ```
 
@@ -72,6 +73,8 @@ class Pipeline {
   flip(axis): this
   filter(options): this
   watermark(options): this
+  embed(options): this
+  extract(options?): SteganographyExtractResult
   async compress(options): Promise<CompressResult>
   async convert(mime, quality?): Promise<Blob>
   async toBlob(mime, quality?): Promise<Blob>

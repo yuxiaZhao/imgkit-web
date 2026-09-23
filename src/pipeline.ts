@@ -8,6 +8,7 @@ import { watermark } from "./watermark";
 import { compress } from "./compress";
 import { convert } from "./convert";
 import { metadata } from "./metadata";
+import { embedMessage, extractMessage } from "./steganography";
 import { browserEncoder, browserTextRenderer } from "./adapter";
 import type {
   ImageDataLike,
@@ -22,6 +23,9 @@ import type {
   ImageMetadata,
   Encoder,
   TextRenderer,
+  SteganographyEmbedOptions,
+  SteganographyExtractOptions,
+  SteganographyExtractResult,
 } from "./types";
 
 export class Pipeline {
@@ -95,6 +99,18 @@ export class Pipeline {
     this.snapshot();
     this.image = watermark(this.image, opts, this.textRenderer);
     return this;
+  }
+
+  embed(opts: SteganographyEmbedOptions): this {
+    this.snapshot();
+    const result = embedMessage(this.image, opts);
+    this.image = result.image;
+    return this;
+  }
+
+  // 提取是只读操作，不修改当前图片，不进入快照历史
+  extract(opts?: SteganographyExtractOptions): SteganographyExtractResult {
+    return extractMessage(this.image, opts);
   }
 
   // 输出操作

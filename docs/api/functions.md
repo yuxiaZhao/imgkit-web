@@ -9,6 +9,7 @@ import {
   compress, convert, metadata, parseExif, normalizeMime,
   createZip, crc32,
   imgkitBatch,
+  embedMessage, extractMessage, steganographyCapacity,
 } from 'imgkit-web';
 ```
 
@@ -105,6 +106,72 @@ function parseExif(buf: ArrayBuffer): ExifInfo
 ```
 
 从 JPEG 原始字节中解析 EXIF 元信息。返回 `{ orientation, make, model, dateTime, gps }`，非 JPEG 或无 EXIF 字段时返回空对象。
+
+## embedMessage / extractMessage / steganographyCapacity（图片隐写）
+
+```ts
+function embedMessage(image: ImageDataLike, options: SteganographyEmbedOptions): SteganographyEmbedResult
+function extractMessage(image: ImageDataLike, options?: SteganographyExtractOptions): SteganographyExtractResult
+function steganographyCapacity(image: ImageDataLike, options?: { depth?: LsbDepth; channels?: SteganographyChannels }): number
+```
+
+将文本信息隐藏到图片像素的最低有效位（LSB）中，肉眼不可见。支持可选的密钥加密（XOR 流加密）。
+
+**`SteganographyEmbedOptions`**：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `message` | `string` | — | 待嵌入的文本（必填） |
+| `key` | `string` | — | 加密密钥，留空则不加密 |
+| `depth` | `1 \| 2 \| 3 \| 4` | `1` | LSB 比特深度 |
+| `channels` | `SteganographyChannels` | `'RGB'` | 使用的颜色通道 |
+
+**`SteganographyExtractOptions`**：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `key` | `string` | — | 解密密钥（与嵌入时一致） |
+| `depth` | `1 \| 2 \| 3 \| 4` | `1` | 与嵌入时一致的比特深度 |
+| `channels` | `SteganographyChannels` | `'RGB'` | 与嵌入时一致的颜色通道 |
+
+**返回值**：
+
+- `embedMessage` 返回 `SteganographyEmbedResult`：`{ image, bitsWritten, bytesWritten, capacity }`
+- `extractMessage` 返回 `SteganographyExtractResult`：`{ success, message, bytesRead }`
+- `steganographyCapacity` 返回可承载的最大文本字节数（已扣除 9 字节头部开销）
+
+**数据格式**：
+
+```
+┌──────────────┬──────────────┬──────────────┬──────────────┐
+│  魔数头(4B)  │ 载荷长度(4B) │ 加密标志(1B)  │  载荷正文(NB)│
+│   "IMGS"     │ uint32 LE    │   0 / 1      │  UTF-8 字节  │
+└──────────────┴──────────────┴──────────────┴──────────────┘
+```
+
+**示例**：
+
+```ts
+import { embedMessage, extractMessage, steganographyCapacity } from 'imgkit-web';
+
+// 容量预估
+const capacity = steganographyCapacity(image, { depth: 1, channels: 'RGB' });
+console.log(`可嵌入 ${capacity} 字节`);
+
+// 嵌入
+const result = embedMessage(image, {
+  message: '这是秘密信息',
+  key: 'my-secret',
+  depth: 1,
+  channels: 'RGB',
+});
+
+// 提取
+const extracted = extractMessage(result.image, { key: 'my-secret' });
+console.log(extracted.success, extracted.message);
+```
+
+> **注意**：嵌入后必须以 PNG 或 WebP 无损模式输出，JPEG 等有损压缩会破坏 LSB 数据。
 
 ## imgkitBatch
 

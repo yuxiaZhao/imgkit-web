@@ -117,3 +117,39 @@ export interface TextRenderer {
 }
 
 export type Processor = (ctx: ProcessContext) => Promise<ImageDataLike> | ImageDataLike;
+
+export type LsbDepth = 1 | 2 | 3 | 4;
+
+export type SteganographyChannels = "R" | "G" | "B" | "RG" | "RB" | "GB" | "RGB";
+
+export interface SteganographyEmbedOptions {
+
+  message: string;
+  key?: string;
+  depth?: LsbDepth;
+  channels?: SteganographyChannels;
+}
+
+export interface SteganographyExtractOptions {
+
+  key?: string;
+  depth?: LsbDepth;
+  channels?: SteganographyChannels;
+}
+
+
+export interface SteganographyEmbedResult {
+
+  image: ImageDataLike;
+  bitsWritten: number;
+  bytesWritten: number;
+  capacity: number;
+}
+
+
+export interface SteganographyExtractResult {
+
+  success: boolean;
+  message: string;
+  bytesRead: number;
+}

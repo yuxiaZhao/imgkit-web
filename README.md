@@ -9,7 +9,7 @@
 
 - **纯前端零依赖** — 核心算法基于 ImageData 实现，不依赖任何第三方图像库（sharp/jimp），浏览器端零原生依赖
 - **双调用风格** — 链式 API（`imgpilot(src).resize().watermark().toBlob()`）与函数式 API（`crop / resize / filter` 等独立函数），按场景选择
-- **10 大功能模块** — 压缩、水印、裁剪、缩放、旋转翻转、格式转换、滤镜、元信息、EXIF 解析、ZIP 打包
+- **11 大功能模块** — 压缩、水印、裁剪、缩放、旋转翻转、格式转换、滤镜、元信息、EXIF 解析、ZIP 打包、图片隐写
 - **TypeScript 严格模式** — 完整类型定义（`.d.ts`），所有接口严格类型化
 - **撤销/重做内置** — Pipeline 内置快照历史，支持链式操作的撤销与重做
 - **Demo 可视化** — 提供完整 Vite Demo 站点，上传 → 设置参数 → 预览 → 下载
@@ -155,6 +155,24 @@ p.undo()    // 撤销到上一步状态
 p.redo()    // 重做到下一步状态
 ```
 
+### embed / extract（图片隐写）
+
+```ts
+// 嵌入文本到图片像素（LSB）
+p.embed({
+  message: '版权所有 © 2026',   // 待嵌入文本
+  key: 'my-secret',             // 可选，密钥加密
+  depth: 1,                     // LSB 比特深度（1-4，默认 1，数值越大容量越大但痕迹越明显）
+  channels: 'RGB',              // 颜色通道（R/G/B/RG/RB/GB/RGB）
+})
+
+// 从图片提取隐藏文本（只读，不修改当前图片，不进入历史栈）
+const result = p.extract({ key: 'my-secret', depth: 1, channels: 'RGB' })
+// result: { success, message, bytesRead }
+```
+
+> **注意**：嵌入后必须以 PNG 或 WebP 无损模式输出，JPEG 等有损压缩会破坏 LSB 数据。
+
 ## 函数式 API
 
 所有核心函数均可单独 import：
@@ -165,6 +183,7 @@ import {
   watermark, applyWatermarkImage, applyTextWatermark, resolvePosition,
   compress, convert, metadata, parseExif, normalizeMime,
   createZip, crc32, imgkitBatch,
+  embedMessage, extractMessage, steganographyCapacity,
 } from 'imgkit-web';
 ```
 
@@ -196,6 +215,9 @@ import {
 | `createZip(entries)` | 浏览器端 ZIP 打包 |
 | `crc32(data)` | CRC-32 校验值计算 |
 | `imgkitBatch(sources)` | 批量加载多张图片，返回 Pipeline 数组 |
+| `embedMessage(image, options)` | 将文本嵌入图片像素（LSB 隐写） |
+| `extractMessage(image, options?)` | 从图片提取隐藏文本 |
+| `steganographyCapacity(image, options?)` | 计算图片可承载的最大文本字节数 |
 
 ### 浏览器工具函数
 
@@ -250,6 +272,7 @@ src/
 ├── metadata.ts    # 元信息提取
 ├── exif.ts        # EXIF 解析
 ├── zip.ts         # ZIP 打包 / CRC-32
+├── steganography.ts # 图片隐写（LSB 嵌入/提取）
 └── index.ts       # 统一入口
 ```
 
@@ -257,6 +280,8 @@ src/
 
 - 浏览器端图片预处理（上传前压缩 / 加水印）
 - 静态站点 / 博客的图片批处理
+- 图片版权溯源（隐写嵌入不可见水印）
+- 信息隐蔽传输（文本隐藏于图片像素中）
 - 教学与算法研究（核心层完全开源）
 
 ## Demo 站点

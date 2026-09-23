@@ -118,3 +118,40 @@ p.canRedo   // 是否可重做
 p.undo()    // 撤销到上一步状态
 p.redo()    // 重做到下一步状态
 ```
+
+### embed / extract（图片隐写）
+
+将文本信息隐藏到图片像素的最低有效位（LSB）中，肉眼不可见。嵌入步骤会进入历史快照，支持 undo/redo；提取是只读操作，不修改当前图片。
+
+```ts
+// 嵌入文本到图片像素（LSB）
+p.embed({
+  message: '版权所有 © 2026',   // 待嵌入文本（必填）
+  key: 'my-secret',             // 可选，密钥加密（XOR 流加密）
+  depth: 1,                     // LSB 比特深度 1-4，默认 1
+  channels: 'RGB',              // 颜色通道 R/G/B/RG/RB/GB/RGB，默认 RGB
+})
+
+// 从图片提取隐藏文本（只读）
+const result = p.extract({ key: 'my-secret', depth: 1, channels: 'RGB' })
+// result: { success: boolean, message: string, bytesRead: number }
+```
+
+**参数说明**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `message` | `string` | — | 待嵌入的文本（embed 必填） |
+| `key` | `string` | — | 加密密钥，留空则不加密 |
+| `depth` | `1 \| 2 \| 3 \| 4` | `1` | LSB 比特深度，数值越大容量越大但痕迹越明显 |
+| `channels` | `SteganographyChannels` | `'RGB'` | 使用的颜色通道 |
+
+**返回值**：
+
+- `embed()` 返回 `this`（支持链式调用）
+- `extract()` 返回 `SteganographyExtractResult`：
+  - `success`：是否成功检测到隐写魔数头
+  - `message`：提取出的文本（失败时为空字符串）
+  - `bytesRead`：实际读取的字节数
+
+> **注意**：嵌入后必须以 PNG 或 WebP 无损模式输出，JPEG 等有损压缩会破坏 LSB 数据。

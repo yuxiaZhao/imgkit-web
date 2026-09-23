@@ -10,5 +10,6 @@ export * from "./compress";
 export * from "./convert";
 export * from "./exif";
 export * from "./zip";
+export * from "./steganography";
 export * from "./adapter";
 export { Pipeline, imgpilot, imgkitBatch } from "./pipeline";

@@ -1,5 +1,5 @@
-import { crop, resize, rotate, flip, filter, watermark, metadata, compress, convert, parseExif } from 'imgkit-web';
-import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm, WatermarkOptions, ExifInfo, ImageMimeType } from 'imgkit-web';
+import { crop, resize, rotate, flip, filter, watermark, metadata, compress, convert, parseExif, embedMessage, extractMessage, steganographyCapacity } from 'imgkit-web';
+import type { ImageDataLike, CropOptions, ResizeOptions, FilterOptions, FlipAxis, FitMode, ResizeAlgorithm, WatermarkOptions, ExifInfo, ImageMimeType, SteganographyChannels } from 'imgkit-web';
 import { Position } from 'imgkit-web';
 
 declare var JSZip: any;
@@ -66,7 +66,7 @@ interface State {
   sourceMeta: string;
   busy: boolean;
   loadingText: string;
-  activeTab: 'crop' | 'resize' | 'rotate' | 'filter' | 'watermark' | 'output';
+  activeTab: 'crop' | 'resize' | 'rotate' | 'filter' | 'watermark' | 'steganography' | 'output';
   enabledOps: Set<string>;
   previewMode: 'single' | 'compare';
   comparePos: number;
@@ -104,6 +104,15 @@ interface State {
   watermarkColor: string;
   watermarkRotate: number;
   watermarkTileGap: number;
+  // steganography
+  stegoMode: 'embed' | 'extract';
+  stegoMessage: string;
+  stegoKey: string;
+  stegoDepth: 1 | 2 | 3 | 4;
+  stegoChannels: SteganographyChannels;
+  stegoExtracted: string;
+  stegoExtractSuccess: boolean | null;
+  stegoExtractSource: 'source' | 'result';
   // output
   outputFormat: ImageMimeType;
   outputQuality: number;
@@ -119,6 +128,7 @@ function labelOf(t: string): string {
     rotate: '旋转/翻转',
     filter: '滤镜',
     watermark: '水印',
+    steganography: '隐写',
     output: '输出',
   };
   return map[t] ?? t;
@@ -148,6 +158,8 @@ export function createApp(root: HTMLElement) {
     watermarkText: '', watermarkTile: false, watermarkPos: Position.BottomRight,
     watermarkOpacity: 0.5, watermarkFontSize: 32, watermarkFontFamily: 'sans-serif', watermarkColor: '#ffffff',
     watermarkRotate: 0, watermarkTileGap: 40,
+    stegoMode: 'embed', stegoMessage: '', stegoKey: '', stegoDepth: 1, stegoChannels: 'RGB',
+    stegoExtracted: '', stegoExtractSuccess: null, stegoExtractSource: 'result',
     outputFormat: 'image/jpeg', outputQuality: 0.8, outputMaxSize: 0,
     compressionMode: 'quality',
     exifData: null,
@@ -239,7 +251,7 @@ export function createApp(root: HTMLElement) {
       <div class="container">
         <header>
           <h1>imgkit-web</h1>
-          <p>纯前端图片处理工具库 · 裁剪 / 缩放 / 旋转翻转 / 滤镜 / 水印 / 输出</p>
+          <p>纯前端图片处理工具库 · 裁剪 / 缩放 / 旋转翻转 / 滤镜 / 水印 / 隐写 / 输出</p>
         </header>
         <div class="layout">
           <section class="panel">
@@ -253,13 +265,13 @@ export function createApp(root: HTMLElement) {
           <section class="panel">
             <h2>2. 处理选项</h2>
             <div class="tabs">
-              ${(['crop', 'resize', 'rotate', 'filter', 'watermark', 'output'] as const)
+              ${(['crop', 'resize', 'rotate', 'filter', 'watermark', 'steganography', 'output'] as const)
                 .map((t) => `<div class="tab ${state.activeTab === t ? 'active' : ''}" data-tab="${t}">${t !== 'output' && state.enabledOps.has(t) ? '<span class="tab-dot"></span>' : ''}${labelOf(t)}</div>`)
                 .join('')}
             </div>
             <div id="tabContent"></div>
             ${state.runError ? `<div class="run-error">${state.runError}</div>` : ''}
-            <button class="btn" id="run" ${hasSource && state.activeTab !== 'output' ? '' : 'disabled'} style="margin-top:var(--space-lg);${state.activeTab === 'output' ? 'display:none' : ''}">执行处理</button>
+            <button class="btn" id="run" ${hasSource && state.activeTab !== 'output' && !(state.activeTab === 'steganography' && state.stegoMode === 'extract') ? '' : 'disabled'} style="margin-top:var(--space-lg);${state.activeTab === 'output' || (state.activeTab === 'steganography' && state.stegoMode === 'extract') ? 'display:none' : ''}">执行处理</button>
           </section>
         </div>
         <section class="panel" style="margin-top:24px">
@@ -395,6 +407,66 @@ export function createApp(root: HTMLElement) {
           <div class="control"><label>旋转角度</label><input type="number" min="-180" max="180" value="${state.watermarkRotate}" data-k="watermarkRotate" /></div>
           ${state.watermarkTile ? `<div class="control"><label>平铺间距</label><input type="number" min="0" max="500" value="${state.watermarkTileGap}" data-k="watermarkTileGap" /></div>` : ''}
         </div></div>`;
+    } else if (t === 'steganography') {
+      const src = getSource();
+      const capacity = src ? steganographyCapacity(src.image, { depth: state.stegoDepth, channels: state.stegoChannels }) : 0;
+      const channelOpts: SteganographyChannels[] = ['R', 'G', 'B', 'RG', 'RB', 'GB', 'RGB'];
+      const depthOpts: (1 | 2 | 3 | 4)[] = [1, 2, 3, 4];
+      const modeToggle = `<div class="control full" style="margin-bottom:8px;">
+        <button class="btn-mini${state.stegoMode === 'embed' ? ' active' : ''}" data-stego-mode="embed">嵌入信息</button>
+        <button class="btn-mini${state.stegoMode === 'extract' ? ' active' : ''}" data-stego-mode="extract" style="margin-left:4px;">提取信息</button>
+      </div>`;
+      if (state.stegoMode === 'embed') {
+        el.innerHTML = `${modeToggle}
+        <div class="controls">
+          <div class="control full"><label class="enable-step"><input type="checkbox" data-op="steganography" ${state.enabledOps.has('steganography') ? 'checked' : ''} /> 启用此步骤</label></div>
+          <div${state.enabledOps.has('steganography') ? '' : ' class="disabled"'} data-op-group="steganography">
+          <div class="control full"><label>待嵌入文本</label><textarea rows="3" data-k="stegoMessage" placeholder="输入要隐藏的文本信息…" style="width:100%;resize:vertical;font-family:inherit;">${state.stegoMessage}</textarea></div>
+          <div class="control"><label>密钥（可选，用于加密）</label><input type="text" value="${state.stegoKey}" data-k="stegoKey" placeholder="留空则不加密" /></div>
+          <div class="control"><label>比特深度</label>
+            <select data-k="stegoDepth">
+              ${depthOpts.map((d) => `<option value="${d}" ${state.stegoDepth === d ? 'selected' : ''}>${d} 位${d === 1 ? '（最隐蔽）' : ''}</option>`).join('')}
+            </select>
+          </div>
+          <div class="control"><label>颜色通道</label>
+            <select data-k="stegoChannels">
+              ${channelOpts.map((c) => `<option value="${c}" ${state.stegoChannels === c ? 'selected' : ''}>${c}</option>`).join('')}
+            </select>
+          </div>
+          <div class="control full" style="font-size:12px;color:var(--color-text-secondary);">当前图片容量：${capacity} 字节${state.stegoMessage && new TextEncoder().encode(state.stegoMessage).length > capacity ? ' · <span style="color:#e74c3c">文本超出容量！</span>' : ''}</div>
+          <div class="control full" style="font-size:12px;color:var(--color-text-secondary);">提示：嵌入后请以 PNG 或 WebP 无损格式输出，JPEG 等有损压缩会破坏隐写数据。</div>
+        </div></div>`;
+      } else {
+        // 提取模式
+        const extractStatus = state.stegoExtractSuccess === null
+          ? ''
+          : state.stegoExtractSuccess
+            ? '<span style="color:#27ae60;">✓ 提取成功</span>'
+            : '<span style="color:#e74c3c;">✗ 未检测到隐写数据</span>';
+        el.innerHTML = `${modeToggle}
+        <div class="controls">
+          <div class="control"><label>提取来源</label>
+            <select data-k="stegoExtractSource">
+              <option value="result" ${state.stegoExtractSource === 'result' ? 'selected' : ''}>当前结果图</option>
+              <option value="source" ${state.stegoExtractSource === 'source' ? 'selected' : ''}>当前原图</option>
+            </select>
+          </div>
+          <div class="control"><label>密钥（与嵌入时一致）</label><input type="text" value="${state.stegoKey}" data-k="stegoKey" placeholder="留空表示未加密" /></div>
+          <div class="control"><label>比特深度</label>
+            <select data-k="stegoDepth">
+              ${depthOpts.map((d) => `<option value="${d}" ${state.stegoDepth === d ? 'selected' : ''}>${d} 位</option>`).join('')}
+            </select>
+          </div>
+          <div class="control"><label>颜色通道</label>
+            <select data-k="stegoChannels">
+              ${channelOpts.map((c) => `<option value="${c}" ${state.stegoChannels === c ? 'selected' : ''}>${c}</option>`).join('')}
+            </select>
+          </div>
+          <div class="control full"><button class="btn" id="btnStegoExtract">提取隐藏信息</button></div>
+          <div class="control full">${extractStatus}</div>
+          <div class="control full"><label>提取结果</label><textarea rows="4" readonly placeholder="提取结果将显示在此…" style="width:100%;resize:vertical;font-family:inherit;">${state.stegoExtracted}</textarea></div>
+        </div>`;
+      }
     } else if (t === 'output') {
       const exif = state.exifData;
       el.innerHTML = `
@@ -1097,10 +1169,19 @@ export function createApp(root: HTMLElement) {
         }
         return;
       }
+      // 隐写模式切换（事件委托，避免 renderTabContent 重渲染后丢失监听）
+      const stegoModeBtn = target.closest('button[data-stego-mode]');
+      if (stegoModeBtn) {
+        state.stegoMode = (stegoModeBtn as HTMLElement).dataset.stegoMode as 'embed' | 'extract';
+        state.stegoExtractSuccess = null;
+        render();
+        return;
+      }
       const id = target.id || target.closest('button')?.id;
       if (id === 'btnOutputRun') await doOutput();
       else if (id === 'btnFlipH') { state.flipAxis = state.flipAxis === 'horizontal' ? '' : 'horizontal'; render(); }
       else if (id === 'btnFlipV') { state.flipAxis = state.flipAxis === 'vertical' ? '' : 'vertical'; render(); }
+      else if (id === 'btnStegoExtract') await doStegoExtract();
     });
 
     // 控件值变更
@@ -1150,6 +1231,14 @@ export function createApp(root: HTMLElement) {
       if (key.startsWith('crop')) {
         refreshCropOverlay();
       } else {
+        renderTabContent();
+      }
+    });
+    // stegoDepth 从 select 取到的是字符串，需转数字
+    root.addEventListener('change', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.dataset.k === 'stegoDepth') {
+        state.stegoDepth = parseInt((target as HTMLSelectElement).value, 10) as 1 | 2 | 3 | 4;
         renderTabContent();
       }
     });
@@ -1410,6 +1499,41 @@ export function createApp(root: HTMLElement) {
     return { data: imgData.data, width: img.width, height: img.height };
   }
 
+  async function doStegoExtract() {
+    const src = getSource();
+    if (!src) return;
+
+    let imgData: { data: Uint8ClampedArray; width: number; height: number };
+    if (state.stegoExtractSource === 'result') {
+      const res = getResult();
+      if (!res) {
+        state.stegoExtractSuccess = false;
+        state.stegoExtracted = '当前无结果图，请先执行嵌入处理或切换为"当前原图"。';
+        render();
+        return;
+      }
+      const loaded = await getProcessedImageData();
+      if (!loaded) return;
+      imgData = loaded;
+    } else {
+      imgData = { data: src.image.data, width: src.image.width, height: src.image.height };
+    }
+
+    try {
+      const result = extractMessage(imgData, {
+        key: state.stegoKey || undefined,
+        depth: state.stegoDepth,
+        channels: state.stegoChannels,
+      });
+      state.stegoExtractSuccess = result.success;
+      state.stegoExtracted = result.success ? result.message : '';
+    } catch (err: any) {
+      state.stegoExtractSuccess = false;
+      state.stegoExtracted = err?.message || '提取失败';
+    }
+    render();
+  }
+
   async function doOutput() {
     const imgData = await getProcessedImageData();
     if (!imgData) return;
@@ -1557,6 +1681,16 @@ export function createApp(root: HTMLElement) {
       };
       const textRenderer = createTextRenderer();
       pipe.add({ name: '水印', fn: (img) => watermark(img, wmOpts, textRenderer) });
+    }
+
+    if (state.enabledOps.has('steganography') && state.stegoMessage) {
+      const stegoOpts = {
+        message: state.stegoMessage,
+        key: state.stegoKey || undefined,
+        depth: state.stegoDepth,
+        channels: state.stegoChannels,
+      };
+      pipe.add({ name: '隐写', fn: (img) => embedMessage(img, stegoOpts).image });
     }
 
     if (pipe.isEmpty()) {
